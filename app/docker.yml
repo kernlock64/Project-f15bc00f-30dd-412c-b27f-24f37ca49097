@@ -1,0 +1,140 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: URBAN-DB
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d init_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: init_db
+    volumes:
+      - ./init-db:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+
+  auth-service:
+    build: ./services/auth
+    ports:
+      - "5000:5000"
+    networks:
+      - internal
+    environment:
+      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  favourite-service:
+    build: ./services/auth
+    expose:
+      - "5001"
+    networks:
+      - internal
+    environment:
+      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  admin-service:
+    build: ./services/auth
+    expose:
+      - "5002"
+    networks:
+      - internal
+    environment:
+      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  com-service:
+    build: ./services/auth
+    expose:
+      - "5003"
+    networks:
+      - internal
+    environment:
+      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  mail-service:
+    build: ./services/auth
+    expose:
+      - "5004"
+    networks:
+      - internal
+    environment:
+      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  media-service:
+    build: ./services/auth
+    expose:
+      - "5005"
+    networks:
+      - internal
+    environment:
+      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  post-service:
+    build: ./services/auth
+    expose:
+      - "5006"
+    networks:
+      - internal
+    environment:
+      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+#  view-service:
+#    ports:
+#      - "5000:5000"
+#    networks:
+#      - internal
+#    build: ./view-service
+#    depends_on:
+#      - auth-service
+
+  user-service:
+    build: ./services/auth
+    expose:
+      - "5007"
+    networks:
+      - internal
+    environment:
+      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+networks:
+  internal:
+    driver: bridge
