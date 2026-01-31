@@ -20,7 +20,7 @@ services:
       - ./init-db:/docker-entrypoint-initdb.d
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - app_network
+      - internal
 
   meilisearch:
     image: getmeili/meilisearch:latest
@@ -40,6 +40,8 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+    networks:
+      - internal
 
 
   auth-service:
