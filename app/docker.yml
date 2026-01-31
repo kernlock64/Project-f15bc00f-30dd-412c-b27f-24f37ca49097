@@ -53,6 +53,11 @@ services:
     environment:
       - DATABASE_URL=${AUTH_DB_URL}
       - SERVICE_PORT=${AUTH_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD={DB_PASSWORD}
+      - DB_PORT={DB_PORT}
+      - DB_HOST={DB_HOST}
+      - SERVICE_NAME="auth_service"
     depends_on:
       db:
         condition: service_healthy
@@ -67,8 +72,13 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=${FAVOURITE_DB_URL}
-      - SERVICE_PORT=${FAVOURITE_PORT}
+      - DATABASE_URL=${AUTH_DB_URL}
+      - SERVICE_PORT=${AUTH_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD={DB_PASSWORD}
+      - DB_PORT={DB_PORT}
+      - DB_HOST={DB_HOST}
+      - SERVICE_NAME="favourite_service"
     depends_on:
       db:
         condition: service_healthy
@@ -83,8 +93,13 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=${ADMIN_DB_URL}
-      - SERVICE_PORT=${ADMIN_PORT}
+      - DATABASE_URL=${AUTH_DB_URL}
+      - SERVICE_PORT=${AUTH_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD={DB_PASSWORD}
+      - DB_PORT={DB_PORT}
+      - DB_HOST={DB_HOST}
+      - SERVICE_NAME="admin_service"
     depends_on:
       db:
         condition: service_healthy
@@ -99,7 +114,13 @@ services:
     networks:
       - internal
     environment:
-      - SERVICE_PORT=${COM_PORT}
+      - DATABASE_URL=${AUTH_DB_URL}
+      - SERVICE_PORT=${AUTH_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD={DB_PASSWORD}
+      - DB_PORT={DB_PORT}
+      - DB_HOST={DB_HOST}
+      - SERVICE_NAME="com_service"
     depends_on:
       db:
         condition: service_healthy
@@ -114,8 +135,13 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=${MAIL_DB_URL}
-      - SERVICE_PORT=${MAIL_PORT}
+      - DATABASE_URL=${AUTH_DB_URL}
+      - SERVICE_PORT=${AUTH_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD={DB_PASSWORD}
+      - DB_PORT={DB_PORT}
+      - DB_HOST={DB_HOST}
+      - SERVICE_NAME="mail_service"
     depends_on:
       db:
         condition: service_healthy
@@ -130,8 +156,13 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=${MEDIA_DB_URL}
-      - SERVICE_PORT=${MEDIA_PORT}
+      - DATABASE_URL=${AUTH_DB_URL}
+      - SERVICE_PORT=${AUTH_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD={DB_PASSWORD}
+      - DB_PORT={DB_PORT}
+      - DB_HOST={DB_HOST}
+      - SERVICE_NAME="media_service"
     depends_on:
       db:
         condition: service_healthy
@@ -146,8 +177,13 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=${POST_DB_URL}
-      - SERVICE_PORT=${POST_PORT}
+      - DATABASE_URL=${AUTH_DB_URL}
+      - SERVICE_PORT=${AUTH_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD={DB_PASSWORD}
+      - DB_PORT={DB_PORT}
+      - DB_HOST={DB_HOST}
+      - SERVICE_NAME="post_service"
     depends_on:
       db:
         condition: service_healthy
@@ -160,9 +196,14 @@ services:
 #      - ${VIEW_PORT}
 #    networks:
 #      - internal
-#    environment:
-#      - DATABASE_URL=${VIEW_DB_URL}
-#      - SERVICE_PORT=${VIEW_PORT}
+#        environment:
+  #      - DATABASE_URL=${AUTH_DB_URL}
+  #      - SERVICE_PORT=${AUTH_PORT}
+  #      - DB_USER=${DB_USER}
+  #      - DB_PASSWORD={DB_PASSWORD}
+  #      - DB_PORT={DB_PORT}
+  #      - DB_HOST={DB_HOST}
+  #      - SERVICE_NAME="view_service"
 #    build: ./view-service
 #    depends_on:
 #      db:
@@ -178,8 +219,13 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=${USER_DB_URL}
-      - SERVICE_PORT=${USER_PORT}
+      - DATABASE_URL=${AUTH_DB_URL}
+      - SERVICE_PORT=${AUTH_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD={DB_PASSWORD}
+      - DB_PORT={DB_PORT}
+      - DB_HOST={DB_HOST}
+      - SERVICE_NAME="user_service"
     depends_on:
       db:
         condition: service_healthy
