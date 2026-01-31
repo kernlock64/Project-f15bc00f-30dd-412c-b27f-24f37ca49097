@@ -22,6 +22,24 @@ services:
     networks:
       - app_network
 
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    container_name: search-engine
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "curl", "-f", "http://localhost:5431"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5431:5431"
+    volumes:
+      - meilidata:/var/lib/meilidata/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+
   auth-service:
     build: ./services/auth
     ports:
@@ -29,7 +47,7 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+      - DATABASE_URL= ${AUTH_DB_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -42,7 +60,7 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+      - DATABASE_URL= ${FAVOURITE_DB_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -55,7 +73,7 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+      - DATABASE_URL= ${ADMIN_DB_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -67,8 +85,6 @@ services:
       - "5003"
     networks:
       - internal
-    environment:
-      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
     depends_on:
       db:
         condition: service_healthy
@@ -81,7 +97,7 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+      - DATABASE_URL= ${MAIL_DB_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -94,7 +110,7 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+      - DATABASE_URL= ${MEDIA_DB_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -107,7 +123,7 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+      - DATABASE_URL= ${POST_DB_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -129,7 +145,7 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=postgresql://admin:pass@postgres-core:5432/auth_db
+      - DATABASE_URL= ${USER_DB_URL}
     depends_on:
       db:
         condition: service_healthy
