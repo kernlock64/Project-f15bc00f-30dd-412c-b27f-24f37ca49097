@@ -58,6 +58,8 @@ services:
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="auth_service"
+    command:
+      - ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
@@ -79,6 +81,8 @@ services:
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="favourite_service"
+    command:
+      - ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
@@ -97,7 +101,7 @@ services:
       - SERVICE_PORT=${AUTH_PORT}
       - DB_USER=${DB_USER}
       - DB_PASSWORD={DB_PASSWORD}
-      - DB_PORT={DB_PORT}
+      - DB_PORT={DB_PORT}`
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="admin_service"
     depends_on:
@@ -142,6 +146,9 @@ services:
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="mail_service"
+    command:
+      - ["alembic", "upgrade", "head"]
+
     depends_on:
       db:
         condition: service_healthy
@@ -163,6 +170,8 @@ services:
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="media_service"
+    command:
+      - ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
@@ -184,6 +193,8 @@ services:
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="post_service"
+    command:
+      - ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
@@ -226,6 +237,8 @@ services:
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="user_service"
+    command:
+      - ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
