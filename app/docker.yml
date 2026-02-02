@@ -50,6 +50,8 @@ services:
       - ${AUTH_PORT}:${AUTH_PORT}
     networks:
       - internal
+    volumes:
+      - .:/service
     environment:
       - DATABASE_URL=${AUTH_DB_URL}
       - SERVICE_PORT=${AUTH_PORT}
@@ -58,8 +60,6 @@ services:
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="auth_service"
-    command:
-      - ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
@@ -73,16 +73,16 @@ services:
       - ${FAVOURITE_PORT}
     networks:
       - internal
+    volumes:
+      - .:/service
     environment:
-      - DATABASE_URL=${AUTH_DB_URL}
-      - SERVICE_PORT=${AUTH_PORT}
+      - DATABASE_URL=${FAVOURITE_DB_URL}
+      - SERVICE_PORT=${FAVOURITE_PORT}
       - DB_USER=${DB_USER}
       - DB_PASSWORD={DB_PASSWORD}
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="favourite_service"
-    command:
-      - ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
@@ -97,8 +97,7 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=${AUTH_DB_URL}
-      - SERVICE_PORT=${AUTH_PORT}
+      - SERVICE_PORT=${ADMIN_PORT}
       - DB_USER=${DB_USER}
       - DB_PASSWORD={DB_PASSWORD}
       - DB_PORT={DB_PORT}`
@@ -118,8 +117,7 @@ services:
     networks:
       - internal
     environment:
-      - DATABASE_URL=${AUTH_DB_URL}
-      - SERVICE_PORT=${AUTH_PORT}
+      - SERVICE_PORT=${COM_PORT}
       - DB_USER=${DB_USER}
       - DB_PASSWORD={DB_PASSWORD}
       - DB_PORT={DB_PORT}
@@ -138,17 +136,16 @@ services:
       - ${MAIL_PORT}
     networks:
       - internal
+    volumes:
+      - .:/service
     environment:
-      - DATABASE_URL=${AUTH_DB_URL}
-      - SERVICE_PORT=${AUTH_PORT}
+      - DATABASE_URL=${MAIL_DB_URL}
+      - SERVICE_PORT=${MAIL_PORT}
       - DB_USER=${DB_USER}
       - DB_PASSWORD={DB_PASSWORD}
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="mail_service"
-    command:
-      - ["alembic", "upgrade", "head"]
-
     depends_on:
       db:
         condition: service_healthy
@@ -162,16 +159,16 @@ services:
       - ${MEDIA_PORT}
     networks:
       - internal
+    volumes:
+      - .:/service
     environment:
-      - DATABASE_URL=${AUTH_DB_URL}
-      - SERVICE_PORT=${AUTH_PORT}
+      - DATABASE_URL=${MEDIA_DB_URL}
+      - SERVICE_PORT=${MEDIA_PORT}
       - DB_USER=${DB_USER}
       - DB_PASSWORD={DB_PASSWORD}
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="media_service"
-    command:
-      - ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
@@ -185,16 +182,16 @@ services:
       - ${POST_PORT}
     networks:
       - internal
+    volumes:
+      - .:/service
     environment:
-      - DATABASE_URL=${AUTH_DB_URL}
-      - SERVICE_PORT=${AUTH_PORT}
+      - DATABASE_URL=${POST_DB_URL}
+      - SERVICE_PORT=${POST_PORT}
       - DB_USER=${DB_USER}
       - DB_PASSWORD={DB_PASSWORD}
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="post_service"
-    command:
-      - ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy
@@ -229,16 +226,16 @@ services:
       - ${USER_PORT}
     networks:
       - internal
+    volumes:
+      - .:/service
     environment:
-      - DATABASE_URL=${AUTH_DB_URL}
-      - SERVICE_PORT=${AUTH_PORT}
+      - DATABASE_URL=${USER_DB_URL}
+      - SERVICE_PORT=${USER_PORT}
       - DB_USER=${DB_USER}
       - DB_PASSWORD={DB_PASSWORD}
       - DB_PORT={DB_PORT}
       - DB_HOST={DB_HOST}
       - SERVICE_NAME="user_service"
-    command:
-      - ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy

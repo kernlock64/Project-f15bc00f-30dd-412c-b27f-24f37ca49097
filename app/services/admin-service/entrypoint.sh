@@ -1,5 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 
+echo "Preparing for starting..."
 set -e
-alembic upgrade head
-exec uvicorn main:app --host 0.0.0.0 --port "${SERVICE_PORT}"
+
+echo "Starting application..."
+exec "$@"
