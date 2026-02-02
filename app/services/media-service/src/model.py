@@ -1,5 +1,5 @@
 from db_init import Base
-from sqlalchemy import Integer, DateTime, Text
+from sqlalchemy import Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 class MediaDB(Base):

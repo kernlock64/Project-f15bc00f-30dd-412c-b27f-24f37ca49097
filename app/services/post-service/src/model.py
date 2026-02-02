@@ -1,7 +1,7 @@
 from typing import List
 
 from db_init import Base
-from sqlalchemy import Integer, DateTime, Text, JSON
+from sqlalchemy import Integer, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 class PostDB(Base):
