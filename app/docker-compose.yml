@@ -1,0 +1,237 @@
+version: '3.8'
+
+services:
+
+  db:
+    image: postgres:15
+    container_name: URBAN-DB
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d init_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "${DB_PORT}:${DB_PORT}"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: init_db
+    volumes:
+      - ./init-db:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    container_name: search-engine
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:7700/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    environment:
+      - MEILI_MASTER_KEY=$MEILISEARCH_KEY
+      - MEILI_NO_ANALYTICS=true
+    ports:
+      - "${MEILISEARCH_PORT}:${MEILISEARCH_PORT}"
+    volumes:
+      - meilidata:/var/lib/meilidata/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+
+  auth-service:
+    build: ./services/auth-service
+    ports:
+      - "${AUTH_PORT}:${AUTH_PORT}"
+    networks:
+      - internal
+    environment:
+      - "PYTHONPATH=."
+      - "DATABASE_URL=${AUTH_DB_URL}"
+      - "SERVICE_PORT=${AUTH_PORT}"
+      - "DB_USER=${DB_USER}"
+      - "DB_PASSWORD=${DB_PASSWORD}"
+      - "DB_PORT=${DB_PORT}"
+      - "DB_HOST=${DB_HOST}"
+      - "SERVICE_NAME='auth_service'"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  favourite-service:
+    build: ./services/favourite-service
+    expose:
+      - "${FAVOURITE_PORT}"
+    networks:
+      - internal
+    environment:
+      - "PYTHONPATH=."
+      - "DATABASE_URL=${FAVOURITE_DB_URL}"
+      - "SERVICE_PORT=${FAVOURITE_PORT}"
+      - "DB_USER=${DB_USER}"
+      - "DB_PASSWORD=${DB_PASSWORD}"
+      - "DB_PORT=${DB_PORT}"
+      - "DB_HOST=${DB_HOST}"
+      - "SERVICE_NAME='favourite_service'"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  admin-service:
+    build: ./services/admin-service
+    expose:
+      - "${ADMIN_PORT}"
+    networks:
+      - internal
+    environment:
+      - "PYTHONPATH=."
+      - "SERVICE_PORT=${ADMIN_PORT}"
+      - "DB_USER=${DB_USER}"
+      - "DB_PASSWORD=${DB_PASSWORD}"
+      - "DB_PORT=${DB_PORT}"
+      - "DB_HOST=${DB_HOST}"
+      - "SERVICE_NAME='admin_service'"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  com-service:
+    build: ./services/com-service
+    expose:
+      - "${COM_PORT}"
+    networks:
+      - internal
+    environment:
+      - "PYTHONPATH=."
+      - "SERVICE_PORT=${COM_PORT}"
+      - "DB_USER=${DB_USER}"
+      - "DB_PASSWORD=${DB_PASSWORD}"
+      - "DB_PORT=${DB_PORT}"
+      - "DB_HOST=${DB_HOST}"
+      - "SERVICE_NAME='com_service'"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  mail-service:
+    build: ./services/mail-service
+    expose:
+      - "${MAIL_PORT}"
+    networks:
+      - internal
+    environment:
+      - "PYTHONPATH=."
+      - "DATABASE_URL=${MAIL_DB_URL}"
+      - "SERVICE_PORT=${MAIL_PORT}"
+      - "DB_USER=${DB_USER}"
+      - "DB_PASSWORD=${DB_PASSWORD}"
+      - "DB_PORT=${DB_PORT}"
+      - "DB_HOST=${DB_HOST}"
+      - "SERVICE_NAME='mail_service'"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  media-service:
+    build: ./services/media-service
+    expose:
+      - "${MEDIA_PORT}"
+    networks:
+      - internal
+    environment:
+      - "PYTHONPATH=."
+      - "DATABASE_URL=${MEDIA_DB_URL}"
+      - "SERVICE_PORT=${MEDIA_PORT}"
+      - "DB_USER=${DB_USER}"
+      - "DB_PASSWORD=${DB_PASSWORD}"
+      - "DB_PORT=${DB_PORT}"
+      - "DB_HOST=${DB_HOST}"
+      - "SERVICE_NAME='media_service'"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  post-service:
+    build: ./services/post-service
+    expose:
+      - "${POST_PORT}"
+    networks:
+      - internal
+    environment:
+      - "PYTHONPATH=."
+      - "DATABASE_URL=${POST_DB_URL}"
+      - "SERVICE_PORT=${POST_PORT}"
+      - "DB_USER=${DB_USER}"
+      - "DB_PASSWORD=${DB_PASSWORD}"
+      - "DB_PORT=${DB_PORT}"
+      - "DB_HOST=${DB_HOST}"
+      - "SERVICE_NAME='post_service'"
+      - "MEILISEARCH_KEY=${MEILISEARCH_KEY}"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+#  view-service:
+#    ports:
+#      - ${VIEW_PORT}
+#    networks:
+#      - internal
+#        environment:
+#         - "PYTHONPATH=."
+  #      - DATABASE_URL=${AUTH_DB_URL}
+  #      - SERVICE_PORT=${AUTH_PORT}
+  #      - DB_USER=${DB_USER}
+  #      - DB_PASSWORD=${DB_PASSWORD}
+  #      - DB_PORT=${DB_PORT}
+  #      - DB_HOST=${DB_HOST}
+  #      - SERVICE_NAME="view_service"
+#    build: ./services/view-service
+#    depends_on:
+#      db:
+#        condition: service_healthy
+#      auth-service:
+#        condition: service_healthy
+#    restart: always
+
+  user-service:
+    build: ./services/user-service
+    expose:
+      - "${USER_PORT}"
+    networks:
+      - internal
+    environment:
+      - "PYTHONPATH=."
+      - "DATABASE_URL=${USER_DB_URL}"
+      - "SERVICE_PORT=${USER_PORT}"
+      - "DB_USER=${DB_USER}"
+      - "DB_PASSWORD=${DB_PASSWORD}"
+      - "DB_PORT=${DB_PORT}"
+      - "DB_HOST=${DB_HOST}"
+      - "SERVICE_NAME='user_service'"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  meilidata:

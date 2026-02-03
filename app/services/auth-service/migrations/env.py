@@ -1,23 +1,19 @@
 import asyncio
-import os
-import sys
-from os.path import abspath, dirname
 from logging.config import fileConfig
 
-sys.path.insert(0, dirname(dirname(abspath(__file__))))
-
+import os
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from src.db_init import Base
 from alembic import context
-
-sys.path.insert(0, dirname(dirname(abspath(__file__))))
-from src.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -73,7 +69,7 @@ async def run_async_migrations() -> None:
     """
 
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        config.get_section(config.config_ini_section, {"url": os.getenv("DATABASE_URL")}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

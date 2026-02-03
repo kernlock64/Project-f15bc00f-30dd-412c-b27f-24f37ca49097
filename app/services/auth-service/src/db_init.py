@@ -5,9 +5,9 @@ import os
 SqlAlchemyBase = declarative_base()
 
 
-def get_async_factory(user, password, host, port, db_name):
+def get_async_factory():
     engine = create_async_engine(
-        f'postgresql+asyncpg://{user}:{password}@{host}:{port}/{db_name}',
+        os.getenv("DATABASE_URL"),
         echo=False,
         pool_pre_ping=True
     )
@@ -24,5 +24,4 @@ class Base(DeclarativeBase):
     pass
 
 
-session = get_async_factory(os.getenv('DB_USER'), os.getenv('DB_PASSWORD'), os.getenv('DB_HOST'), os.getenv('DB_PORT'),
-                            os.getenv('SERVICE_NAME'))
+session = get_async_factory()

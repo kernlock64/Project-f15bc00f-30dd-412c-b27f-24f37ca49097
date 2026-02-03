@@ -1,6 +1,6 @@
-CREATE DATABASE auth_service;
-CREATE DATABASE post_service;
-CREATE DATABASE user_service;
-CREATE DATABASE favourite_service;
-CREATE DATABASE media_service;
-CREATE DATABASE mail_service;
+CREATE DATABASE auth_db;
+CREATE DATABASE post_db;
+CREATE DATABASE user_db;
+CREATE DATABASE favourite_db;
+CREATE DATABASE media_db;
+CREATE DATABASE mail_db;
