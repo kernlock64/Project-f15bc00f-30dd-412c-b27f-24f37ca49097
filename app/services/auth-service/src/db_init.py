@@ -5,7 +5,7 @@ import os
 SqlAlchemyBase = declarative_base()
 
 
-def get_async_factory():
+def get_async_session():
     engine = create_async_engine(
         os.getenv("DATABASE_URL"),
         echo=False,
@@ -24,4 +24,4 @@ class Base(DeclarativeBase):
     pass
 
 
-session = get_async_factory()
+session = get_async_session()
