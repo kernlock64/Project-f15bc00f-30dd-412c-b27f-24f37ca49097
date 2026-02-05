@@ -3,6 +3,8 @@ import httpx
 import json
 import hashlib
 import secrets
+from pydantic import BaseModel, EmailStr
+
 from sqlalchemy import *
 
 from db_init import get_async_session
@@ -50,20 +52,24 @@ async def check_data(password, email, username):
 
     return {"status": "True", }
 
+class RegistrationScheme(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    role: int
+
+class LoginScheme(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+
+
 @app.post("/registration")
-async def registration():
-
-    """
-    password:
-    email:
-    username:
-    role:
-    """
-
+async def registration(raw_data: RegistrationScheme):
     pass
 
 @app.post("/login")
-async def login():
+async def login(raw_data: LoginScheme):
 
     """
     password:
