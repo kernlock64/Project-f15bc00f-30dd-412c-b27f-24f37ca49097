@@ -6,6 +6,7 @@ import json
 import hashlib
 import secrets
 from pydantic import BaseModel, EmailStr
+import jwt
 
 from sqlalchemy import *
 
