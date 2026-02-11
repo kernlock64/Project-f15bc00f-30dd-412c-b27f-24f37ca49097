@@ -1,12 +1,13 @@
 import uuid
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Depends, Request
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Depends, Request, middleware
 import httpx
 import json
 import hashlib
 import secrets
 from pydantic import BaseModel, EmailStr
 import jwt
+from datetime import datetime
 
 from sqlalchemy import *
 
@@ -114,7 +115,8 @@ async def registration(data: RegistrationScheme, request: Request, file: UploadF
         files = {
             "file": (file.filename, file.file, file.content_type),
         }
-        check = check_data(password, email, username)
+
+        check = await check_data(password, email, username)
 
         if check["status"] == "False":
             return BaseResponse(
@@ -122,28 +124,30 @@ async def registration(data: RegistrationScheme, request: Request, file: UploadF
                 message=check["message"],
             )
 
-        user = AuthDB(email=email, hashed_password=hashed_password, session_id=uuid.uuid4())
+        user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(), uid=uuid.uuid4())
+        session.add(user)
+
+        payload = {
+            "role": role,
+            "uid": user.uid,
+            "lifetime": "900",
+            "exp": datetime.now(),
+        }
 
         data = {
             "username": username,
             "email": email,
             "role": role,
-            "uid"
+            "uid": user.uid,
         }
 
-        client.post()
+        resp = await client.post("")
 
     except HTTPError as err:
         return BaseResponse(
             status="False",
             message=str(err),
         )
-
-
-    return BaseResponse(
-        status="True",
-        message="Success"
-    )
 
 
 @app.post("/login", response_model=BaseResponse)
@@ -171,4 +175,8 @@ async def change_email():
     uid:
     """
 
+    pass
+
+@app.post("/refresh")
+async def refresh():
     pass

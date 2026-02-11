@@ -24,3 +24,4 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.40.0
 pydantic==2.12.5
+PyJWT==2.11.0

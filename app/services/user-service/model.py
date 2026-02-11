@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 class CustomersDB(Base):
     __tablename__ = "user-service-customers"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    id: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
     username: Mapped[Text] = mapped_column(Text, nullable=False)
     email: Mapped[Text] = mapped_column(Text, nullable=False)
     image: Mapped[Integer] = mapped_column(Integer, nullable=False)
@@ -14,7 +14,7 @@ class CustomersDB(Base):
 class ProdDB(Base):
     __tablename__ = "user-service-prod"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    id: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
     name: Mapped[Text] = mapped_column(Text, nullable=False)
     email: Mapped[Text] = mapped_column(Text, nullable=False)
     image: Mapped[Integer] = mapped_column(Integer, nullable=False)
