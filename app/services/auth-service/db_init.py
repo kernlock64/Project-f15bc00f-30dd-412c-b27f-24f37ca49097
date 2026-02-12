@@ -1,5 +1,5 @@
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker, declarative_base, DeclarativeBase
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.orm import declarative_base, DeclarativeBase
 import os
 
 SqlAlchemyBase = declarative_base()
@@ -18,7 +18,7 @@ def get_async_session():
     global engine
     eng = engine
 
-    __factory = sessionmaker(
+    __factory = async_sessionmaker(
         bind=eng,
         class_=AsyncSession,
         expire_on_commit=False

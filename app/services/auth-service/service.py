@@ -1,19 +1,19 @@
 import uuid
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Depends, Request, middleware
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Depends, Request, Response
 import httpx
 import json
 import hashlib
 import secrets
 from pydantic import BaseModel, EmailStr
 import jwt
-from datetime import datetime
-
+from datetime import datetime, timedelta
 from sqlalchemy import *
+import os
 
 from httpx import Limits, AsyncClient, HTTPError
 from db_init import get_async_session, engine
-from model import AuthDB
+from model import AuthDB, TokenDB
 from email_validator import EmailNotValidError, validate_email
 from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
@@ -23,10 +23,12 @@ limits = Limits(
     max_keepalive_connections=20,
 )
 
-
-class BaseResponse(BaseModel):
-    status: str
-    message: str
+async def reading_data():
+    async with open("./keys/prv.pem") as f:
+        private_key = f.read()
+    async with open("./keys/pub.pem") as f:
+        public_key = f.read()
+    return private_key, public_key
 
 
 @asynccontextmanager
@@ -46,11 +48,12 @@ app = FastAPI(lifespan=lifespan)
 
 
 async def get_db():
-    async with get_async_session() as session:
+    factory = get_async_session()
+    async with factory() as session:
         yield session
 
 
-async def check_data(password, email, username, session: Session = Depends(get_db())):
+async def check_data(password, email, username, session: Session = Depends(get_db)):
     check_flag = False
 
     if len(password) < 8:
@@ -102,15 +105,15 @@ class LoginScheme(BaseModel):
     password: str
 
 
-@app.post("/registration", response_model=BaseResponse)
-async def registration(data: RegistrationScheme, request: Request, file: UploadFile = File(...),
-                       session: Session = Depends(get_db()), client: AsyncClient = Depends(get_async_session)):
+@app.post("/registration")
+async def registration(item: RegistrationScheme, response: Response, file: UploadFile = File(...),
+                       session: Session = Depends(get_db), client: AsyncClient = Depends(get_async_session)):
     try:
-        username = data.username
-        password = data.password
-        hashed_password = hashlib.sha256(data.password.encode()).hexdigest()
-        email = data.email
-        role = data.role
+        username = item.username
+        password = item.password
+        hashed_password = hashlib.sha256(item.password.encode()).hexdigest()
+        email = item.email
+        role = item.role
 
         files = {
             "file": (file.filename, file.file, file.content_type),
@@ -119,10 +122,7 @@ async def registration(data: RegistrationScheme, request: Request, file: UploadF
         check = await check_data(password, email, username)
 
         if check["status"] == "False":
-            return BaseResponse(
-                status="False",
-                message=check["message"],
-            )
+            return {"status": check["status"], "message": check["message"]}
 
         user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(), uid=uuid.uuid4())
         session.add(user)
@@ -131,7 +131,7 @@ async def registration(data: RegistrationScheme, request: Request, file: UploadF
             "role": role,
             "uid": user.uid,
             "lifetime": "900",
-            "exp": datetime.now(),
+            "exp": datetime.now() + timedelta(seconds=900),
         }
 
         data = {
@@ -141,16 +141,37 @@ async def registration(data: RegistrationScheme, request: Request, file: UploadF
             "uid": user.uid,
         }
 
-        resp = await client.post("")
+        # resp = await client.post("http://user-service:5004/users/add-user", data=data, files=files)
+        # if resp.status_code != 200:
+        if 0:
+            session.rollback()
+            return {"status": "False", "message": str(resp.json()["message"])}
+        else:
+            session.commit()
+            prv_key, pub_key = await reading_data()
+
+            access_t = jwt.encode(payload, prv_key, algorithm="RS256")
+            refreshment_t = uuid.uuid4()
+
+            token = TokenDB(uid=user.uid, token=refreshment_t,
+                            expires_at=(datetime.now() + timedelta(days=30)), is_expired=False)
+            session.add(token)
+            session.commit()
+
+            response.set_cookie(key="refreshment_t", value=refreshment_t, httponly=True)
+            response.set_cookie(key="access_t", value=access_t,)
+
+            return {"status": "True"}
+
 
     except HTTPError as err:
-        return BaseResponse(
-            status="False",
-            message=str(err),
-        )
+        return {
+            "status": "False",
+            "message": str(err),
+        }
 
 
-@app.post("/login", response_model=BaseResponse)
+@app.post("/login")
 async def login(data: LoginScheme):
     """
     password:
