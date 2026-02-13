@@ -146,7 +146,6 @@ async def registration(
 
             access_t = jwt.encode(payload, prv_key, algorithm="ES256")
             refreshment_t = str(secrets.token_urlsafe(64))
-
             token = TokenDB(uid=user.uid, token=refreshment_t,
                             expires_at=(datetime.now() + timedelta(days=30)), is_expired=False)
             session.add(token)
