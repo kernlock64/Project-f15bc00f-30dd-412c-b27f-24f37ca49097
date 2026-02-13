@@ -1,6 +1,7 @@
 import uuid
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Depends, Request, Response
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Depends, Request, Response, Form
+from typing import Annotated
 import httpx
 import json
 import hashlib
@@ -9,14 +10,13 @@ from pydantic import BaseModel, EmailStr
 import jwt
 from datetime import datetime, timedelta
 from sqlalchemy import *
-import os
 
 from httpx import Limits, AsyncClient, HTTPError
 from db_init import get_async_session, engine
 from model import AuthDB, TokenDB
 from email_validator import EmailNotValidError, validate_email
 from contextlib import asynccontextmanager
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 limits = Limits(
     max_connections=100,
@@ -53,7 +53,7 @@ async def get_db():
         yield session
 
 
-async def check_data(password, email, username, session: Session = Depends(get_db)):
+async def check_data(password, email, username, session: AsyncSession):
     check_flag = False
 
     if len(password) < 8:
@@ -69,7 +69,8 @@ async def check_data(password, email, username, session: Session = Depends(get_d
     if not check_flag:
         return {"status": "False", "message": "Пароль должен содержать в себе минимум 1 заглавную букву, и одну цифру!"}
 
-    if await session.execute(select(exists().where(AuthDB.email == email))).scalar():
+    result = await session.execute(select(exists().where(AuthDB.email == email)))
+    if result.scalar():
         return {"status": "False", "message": "Пользователь уже существует!"}
 
     if 3 > len(username):
@@ -92,13 +93,6 @@ async def check_data(password, email, username, session: Session = Depends(get_d
     return {"status": "True", }
 
 
-class RegistrationScheme(BaseModel):
-    username: str
-    email: EmailStr
-    password: str
-    role: int
-
-
 class LoginScheme(BaseModel):
     username: str
     email: EmailStr
@@ -106,25 +100,31 @@ class LoginScheme(BaseModel):
 
 
 @app.post("/registration")
-async def registration(item: RegistrationScheme, response: Response, file: UploadFile = File(...),
-                       session: Session = Depends(get_db), client: AsyncClient = Depends(get_async_session)):
+async def registration(
+                       response: Response,
+                       file: UploadFile = File(...),
+                       session: AsyncSession = Depends(get_db),
+                       client: AsyncClient = Depends(get_httpx),
+                       username: str = Form(...),
+                       role: str = Form(...),
+                       password: str = Form(...),
+                       email: str = Form(...)
+):
     try:
-        username = item.username
-        password = item.password
-        hashed_password = hashlib.sha256(item.password.encode()).hexdigest()
-        email = item.email
-        role = item.role
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+
+        content = await file.read()
 
         files = {
-            "file": (file.filename, file.file, file.content_type),
+            "avatar": (file.filename, content, file.content_type),
         }
 
-        check = await check_data(password, email, username)
+        check = await check_data(password, email, username, session=session)
 
         if check["status"] == "False":
             return {"status": check["status"], "message": check["message"]}
 
-        user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(), uid=uuid.uuid4())
+        user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(), uid=str(uuid.uuid4()))
         session.add(user)
 
         payload = {
@@ -144,19 +144,19 @@ async def registration(item: RegistrationScheme, response: Response, file: Uploa
         # resp = await client.post("http://user-service:5004/users/add-user", data=data, files=files)
         # if resp.status_code != 200:
         if 0:
-            session.rollback()
+            await session.rollback()
             return {"status": "False", "message": str(resp.json()["message"])}
         else:
-            session.commit()
+            await session.commit()
             prv_key, pub_key = await reading_data()
 
             access_t = jwt.encode(payload, prv_key, algorithm="RS256")
-            refreshment_t = uuid.uuid4()
+            refreshment_t = str(uuid.uuid4())
 
             token = TokenDB(uid=user.uid, token=refreshment_t,
                             expires_at=(datetime.now() + timedelta(days=30)), is_expired=False)
             session.add(token)
-            session.commit()
+            await session.commit()
 
             response.set_cookie(key="refreshment_t", value=refreshment_t, httponly=True)
             response.set_cookie(key="access_t", value=access_t,)
