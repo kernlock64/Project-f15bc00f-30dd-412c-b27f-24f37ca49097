@@ -8,7 +8,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 RUN chmod +x ./entrypoint.sh
-RUN chmod 400 ./keys/prv.pem
 
 ENTRYPOINT ["/service/entrypoint.sh"]
 

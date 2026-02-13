@@ -10,6 +10,7 @@ from pydantic import BaseModel, EmailStr
 import jwt
 from datetime import datetime, timedelta
 from sqlalchemy import *
+import os
 
 from httpx import Limits, AsyncClient, HTTPError
 from db_init import get_async_session, engine
@@ -22,14 +23,6 @@ limits = Limits(
     max_connections=100,
     max_keepalive_connections=20,
 )
-
-async def reading_data():
-    async with open("./keys/prv.pem") as f:
-        private_key = f.read()
-    async with open("./keys/pub.pem") as f:
-        public_key = f.read()
-    return private_key, public_key
-
 
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
@@ -148,10 +141,11 @@ async def registration(
             return {"status": "False", "message": str(resp.json()["message"])}
         else:
             await session.commit()
-            prv_key, pub_key = await reading_data()
 
-            access_t = jwt.encode(payload, prv_key, algorithm="RS256")
-            refreshment_t = str(uuid.uuid4())
+            prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
+
+            access_t = jwt.encode(payload, prv_key, algorithm="ES256")
+            refreshment_t = str(secrets.token_urlsafe(64))
 
             token = TokenDB(uid=user.uid, token=refreshment_t,
                             expires_at=(datetime.now() + timedelta(days=30)), is_expired=False)
