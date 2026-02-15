@@ -1,9 +1,7 @@
 import uuid
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Depends, Request, Response, Form
-from typing import Annotated
+from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form
 import httpx
-import json
 import hashlib
 import secrets
 import jwt
@@ -12,7 +10,6 @@ from sqlalchemy import *
 import os
 
 from httpx import Limits, AsyncClient, HTTPError
-from sqlalchemy.testing.pickleable import User
 
 from db_init import get_async_session, engine
 from model import AuthDB, TokenDB
@@ -175,6 +172,7 @@ async def login(
 
         users = await session.execute(select(AuthDB).where(AuthDB.email == email))
         user = users.scalars().one_or_none()
+
         if not user:
             return {
                 "status": "False",
@@ -203,8 +201,8 @@ async def login(
         session.add(token)
         await session.commit()
 
-        response.set_cookie(key="refreshment_t", value=refreshment_t, httponly=True)
-        response.set_cookie(key="access_t", value=access_t, )
+        response.set_cookie(key="refreshment_t", value=refreshment_t, httponly=True, secure=True)
+        response.set_cookie(key="access_t", value=access_t, secure=True, httponly=True)
 
         return {"status": "True"}
 
@@ -217,21 +215,69 @@ async def login(
 
 
 @app.post("/change-password")
-async def change_password():
-    """
-    uid:
-    """
+async def change_password(
+        request: Request,
+        session: AsyncSession = Depends(get_db),
+        new_password: str = Form(...),
+):
+    try:
+        headers = request.headers
+        uid = headers.get("X-User-Id")
 
-    pass
+        users = await session.execute(select(AuthDB).where(AuthDB.uid == uid))
+        user = users.scalars().one_or_none()
+
+        if not user:
+            return {
+                "status": "False",
+                "message": "Пользователя не существует!"
+            }
+
+        user.hashed_password = hashlib.sha256(new_password.encode()).hexdigest()
+        await session.commit()
+
+        return {
+            "status": "True",
+        }
+
+    except HTTPError as err:
+        return {
+            "status": "False",
+            "message": str(err),
+        }
 
 
 @app.post("/change-email")
-async def change_email():
-    """
-    uid:
-    """
+async def change_email(
+        request: Request,
+        session: AsyncSession = Depends(get_db),
+        new_email: str = Form(...),
+):
+    try:
+        headers = request.headers
+        uid = headers.get("X-User-Id")
 
-    pass
+        users = await session.execute(select(AuthDB).where(AuthDB.uid == uid))
+        user = users.scalars().one_or_none()
+
+        if not user:
+            return {
+                "status": "False",
+                "message": "Пользователя не существует!"
+            }
+
+        user.email = new_email
+        await session.commit()
+
+        return {
+            "status": "True",
+        }
+
+    except HTTPError as err:
+        return {
+            "status": "False",
+            "message": str(err),
+        }
 
 
 @app.post("/refresh")
