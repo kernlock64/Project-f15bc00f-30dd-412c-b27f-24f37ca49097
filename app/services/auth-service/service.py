@@ -5,7 +5,7 @@ import httpx
 import hashlib
 import secrets
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import *
 import os
 
@@ -112,15 +112,16 @@ async def registration(
         if check["status"] == "False":
             return {"status": check["status"], "message": check["message"]}
 
-        user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(), uid=str(uuid.uuid4()),
+        user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(tz=timezone.utc), uid=str(uuid.uuid4()),
                       role=role)
         session.add(user)
 
         payload = {
             "role": role,
             "uid": user.uid,
+            "jit": str(uuid.uuid4()),
             "lifetime": "900",
-            "exp": datetime.now() + timedelta(seconds=900),
+            "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
         }
 
         data = {
@@ -142,7 +143,7 @@ async def registration(
             access_t = jwt.encode(payload, prv_key, algorithm="ES256")
             refreshment_t = str(secrets.token_urlsafe(64))
             token = TokenDB(uid=user.uid, token=refreshment_t,
-                            expires_at=(datetime.now() + timedelta(days=30)), is_expired=False)
+                            expires_at=(datetime.now(tz=timezone.utc) + timedelta(days=30)), is_expired=False)
             session.add(token)
             await session.commit()
 
@@ -188,8 +189,9 @@ async def login(
         payload = {
             "role": user.role,
             "uid": user.uid,
+            "jit": str(uuid.uuid4()),
             "lifetime": "900",
-            "exp": datetime.now() + timedelta(seconds=900),
+            "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
         }
 
         prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
@@ -197,7 +199,7 @@ async def login(
         access_t = jwt.encode(payload, prv_key, algorithm="ES256")
         refreshment_t = str(secrets.token_urlsafe(64))
         token = TokenDB(uid=user.uid, token=refreshment_t,
-                        expires_at=(datetime.now() + timedelta(days=30)), is_expired=False)
+                        expires_at=(datetime.now(tz=timezone.utc) + timedelta(days=30)), is_expired=False)
         session.add(token)
         await session.commit()
 
@@ -281,5 +283,76 @@ async def change_email(
 
 
 @app.post("/refresh")
-async def refresh():
-    pass
+async def refresh(
+        request: Request,
+        response: Response,
+        session: AsyncSession = Depends(get_db),
+):
+
+    try:
+
+        refreshment_t = request.cookies.get("refreshment_t")
+
+        tokens = await session.execute(select(TokenDB).where(TokenDB.token == refreshment_t))
+        token = tokens.scalars().one_or_none()
+        uid = token.uid
+
+        if not token:
+            return {
+                "status": "False",
+                "message": "Invalid token!"
+            }
+
+        if token.is_expired:
+            e_tokens = await session.execute(select(TokenDB).where(TokenDB.uid == uid))
+            for t in e_tokens:
+                t.is_expired = True
+
+            await session.commit()
+
+            return {
+                "status": "False",
+                "message": "Suspicious activity!"
+            }
+
+        if token.expires_at < datetime.now(tz=timezone.utc):
+            return {
+                "status": "False",
+                "message": "Token expired!"
+            }
+
+        else:
+
+            token.is_expired = True
+            await session.commit()
+
+            users = await session.execute(select(AuthDB).where(AuthDB.uid == uid))
+            user = users.scalars().one_or_none()
+
+            payload = {
+                "role": user.role,
+                "uid": user.uid,
+                "jit": str(uuid.uuid4()),
+                "lifetime": "900",
+                "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
+            }
+
+            prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
+
+            access_t = jwt.encode(payload, prv_key, algorithm="ES256")
+            refreshment_t = str(secrets.token_urlsafe(64))
+            n_token = TokenDB(uid=user.uid, token=refreshment_t,
+                            expires_at=(datetime.now(tz=timezone.utc) + timedelta(days=30)), is_expired=False)
+            session.add(n_token)
+            await session.commit()
+
+            response.set_cookie(key="refreshment_t", value=refreshment_t, httponly=True, secure=True)
+            response.set_cookie(key="access_t", value=access_t, secure=True, httponly=True)
+
+            return {"status": "True"}
+
+    except HTTPError as err:
+        return {
+            "status": "False",
+            "message": str(err),
+        }
