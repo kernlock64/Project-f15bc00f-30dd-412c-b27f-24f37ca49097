@@ -9,7 +9,7 @@ class CustomersDB(Base):
     username: Mapped[Text] = mapped_column(Text, nullable=False)
     email: Mapped[Text] = mapped_column(Text, nullable=False)
     image: Mapped[Integer] = mapped_column(Integer, nullable=False)
-    date_created: Mapped[DateTime] = mapped_column(DateTime, nullable=False)
+    date_created: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 class ProdDB(Base):
     __tablename__ = "user-service-prod"
@@ -18,7 +18,7 @@ class ProdDB(Base):
     name: Mapped[Text] = mapped_column(Text, nullable=False)
     email: Mapped[Text] = mapped_column(Text, nullable=False)
     image: Mapped[Integer] = mapped_column(Integer, nullable=False)
-    date_created: Mapped[DateTime] = mapped_column(DateTime, nullable=False)
+    date_created: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
     telephone: Mapped[Text] = mapped_column(Text)
     description: Mapped[Text] = mapped_column(Text)
     delivery_description: Mapped[Text] = mapped_column(Text)

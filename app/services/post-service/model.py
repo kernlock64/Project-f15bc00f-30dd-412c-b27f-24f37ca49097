@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import List
 
 from db_init import Base
-from sqlalchemy import Integer, Text, JSON, ForeignKey
+from sqlalchemy import Integer, Text, JSON, ForeignKey, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 
 class PostDB(Base):
@@ -12,6 +13,7 @@ class PostDB(Base):
     title: Mapped[Text] = mapped_column(Text, nullable=False)
     description: Mapped[Text] = mapped_column(Text, nullable=False)
     images_array: Mapped[List[int]] = mapped_column(JSON, nullable=False)
+    posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 class CategoryDB(Base):
     __tablename__ = "category"

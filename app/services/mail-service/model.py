@@ -8,4 +8,4 @@ class MailDB(Base):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
     to: Mapped[str] = mapped_column(Text, nullable=False)
-    date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

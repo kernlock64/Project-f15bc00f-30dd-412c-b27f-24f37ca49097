@@ -305,7 +305,7 @@ async def refresh(
 
         if token.is_expired:
             e_tokens = await session.execute(select(TokenDB).where(TokenDB.uid == uid))
-            for t in e_tokens:
+            for t in e_tokens.scalars():
                 t.is_expired = True
 
             await session.commit()
