@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import *
 import os
 
-from httpx import Limits, AsyncClient, HTTPError, stream
+from httpx import Limits, AsyncClient, HTTPError
 
 from db_init import get_async_session, engine
 from model import AuthDB, TokenDB
