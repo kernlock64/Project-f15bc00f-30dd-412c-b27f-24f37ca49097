@@ -1,6 +1,7 @@
 import uuid
 
-from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form, status, middleware, Path
+from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form, status
+from fastapi.responses import JSONResponse
 from starlette.responses import StreamingResponse
 from starlette.datastructures import MutableHeaders
 import httpx
@@ -56,42 +57,48 @@ ROUTES = {
 }
 
 @app.middleware("http")
-async def proxy(request: Request, call_next, response: Response,):
+async def proxy(request: Request, call_next):
 
     if request.url.path in ["/registration", "/login"]:
         return await call_next(request)
 
-    access_token = request.headers.get("access_t")
-    public_key = os.getenv("PUBLIC_KEY")
+    access_token = request.cookies.get("access_t")
+    public_key = os.getenv("PUBLIC_KEY").replace("\\n", "\n")
 
     if not access_token:
-        response.status_code = status.HTTP_401_UNAUTHORIZED
-        return {
-            "status": "False",
-            "message": "Unauthorized",
-        }
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "status": "False",
+                "message": "Unauthorized",
+            }
+        )
 
     try:
-        payload = jwt.decode(access_token, public_key)
+        payload = jwt.decode(access_token, public_key, algorithms="ES256")
 
     except jwt.InvalidSignatureError:
-        response.status_code = status.HTTP_401_UNAUTHORIZED
-        return {
-            "status": "False",
-            "message": "Unauthorized",
-        }
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "status": "False",
+                "message": "Unauthorized",
+            }
+        )
 
     except jwt.ExpiredSignatureError:
-        response.status_code = status.HTTP_401_UNAUTHORIZED
-        return {
-            "status": "False",
-            "message": "Token has expired",
-        }
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "status": "False",
+                "message": "Token has expired",
+            }
+        )
 
-    headers = MutableHeaders(request.scope)
+    headers = MutableHeaders(request._headers)
 
     headers['X-User-Id'] = payload["uid"]
-    headers['X-Role'] = payload["role"]
+    headers['X-Role'] = str(payload["role"])
 
     return await call_next(request)
 
@@ -407,7 +414,13 @@ async def refresh(
 @app.api_route("/{path:path}", methods=["GET", "POST", "DELETE"])
 async def proxy(request: Request, client: AsyncClient = Depends(get_httpx),):
     path = request.url.path
-    target_url = ROUTES.get(path.strip("/")[1])
+    target_url = ROUTES.get(path.split("/")[1])
+
+    if not target_url:
+        return {
+            "status": "False",
+            "message": "Invalid URL!"
+        }
 
     if request.url.query:
         final_url = f"{target_url+path}?{request.url.query}"
