@@ -1,6 +1,8 @@
 import uuid
 
-from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form
+from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form, status, middleware, Path
+from starlette.responses import StreamingResponse
+from starlette.datastructures import MutableHeaders
 import httpx
 import hashlib
 import secrets
@@ -9,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import *
 import os
 
-from httpx import Limits, AsyncClient, HTTPError
+from httpx import Limits, AsyncClient, HTTPError, stream
 
 from db_init import get_async_session, engine
 from model import AuthDB, TokenDB
@@ -18,7 +20,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 
 limits = Limits(
-    max_connections=100,
+    max_connections=1000,
     max_keepalive_connections=20,
 )
 
@@ -46,6 +48,52 @@ async def get_db():
     async with factory() as session:
         yield session
 
+ROUTES = {
+
+    "users": "http://user-service:5004",
+    "posts": "http://post-service:5003",
+    "favorites": "http://favorite-service:5005",
+}
+
+@app.middleware("http")
+async def proxy(request: Request, call_next, response: Response,):
+
+    if request.url.path in ["/registration", "/login"]:
+        return await call_next(request)
+
+    access_token = request.headers.get("access_t")
+    public_key = os.getenv("PUBLIC_KEY")
+
+    if not access_token:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return {
+            "status": "False",
+            "message": "Unauthorized",
+        }
+
+    try:
+        payload = jwt.decode(access_token, public_key)
+
+    except jwt.InvalidSignatureError:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return {
+            "status": "False",
+            "message": "Unauthorized",
+        }
+
+    except jwt.ExpiredSignatureError:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return {
+            "status": "False",
+            "message": "Token has expired",
+        }
+
+    headers = MutableHeaders(request.scope)
+
+    headers['X-User-Id'] = payload["uid"]
+    headers['X-Role'] = payload["role"]
+
+    return await call_next(request)
 
 async def check_data(password, email, username, session: AsyncSession):
     check_flag = False
@@ -85,7 +133,6 @@ async def check_data(password, email, username, session: AsyncSession):
         return {"status": "False", "message": 'E-mail недействителен!'}
 
     return {"status": "True", }
-
 
 @app.post("/registration")
 async def registration(
@@ -356,3 +403,31 @@ async def refresh(
             "status": "False",
             "message": str(err),
         }
+
+@app.api_route("/{path:path}", methods=["GET", "POST", "DELETE"])
+async def proxy(request: Request, client: AsyncClient = Depends(get_httpx),):
+    path = request.url.path
+    target_url = ROUTES.get(path.strip("/")[1])
+
+    if request.url.query:
+        final_url = f"{target_url+path}?{request.url.query}"
+    else:
+        final_url = target_url + path
+
+    headers = dict(request.headers)
+    headers.pop("host", None)
+
+    req = client.build_request(
+        method=request.method,
+        url=final_url,
+        headers=headers,
+        content=request.stream(),
+        cookies=request.cookies,
+    )
+
+    response = await client.send(req, stream=True)
+    return StreamingResponse(
+        content=response.aiter_raw(),
+        status_code=response.status_code,
+        headers=response.headers,
+    )
