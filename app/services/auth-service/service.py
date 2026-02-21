@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form, status
+from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 from starlette.responses import StreamingResponse
 from starlette.datastructures import MutableHeaders
@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 limits = Limits(
     max_connections=1000,
-    max_keepalive_connections=20,
+    max_keepalive_connections=100,
 )
 
 
@@ -55,6 +55,11 @@ ROUTES = {
     "posts": "http://post-service:5003",
     "favorites": "http://favorite-service:5005",
 }
+
+def logout(
+        db: AsyncSession = Depends(get_db),
+):
+    pass
 
 @app.middleware("http")
 async def proxy(request: Request, call_next):
@@ -213,6 +218,37 @@ async def registration(
             "message": str(err),
         }
 
+async def deletion_task(
+        client: AsyncClient = Depends(get_httpx),
+):
+    try:
+        response = client.post("http://user-service:5004/users/delete-user")
+        return {"status": "True"}
+    except HTTPError as err:
+        return {
+            "status": "False",
+            "message": str(err),
+        }
+
+
+@app.post("/delete-user")
+async def delete(
+        request: Request,
+        background_tasks: BackgroundTasks,
+        db: AsyncSession = Depends(get_db),
+):
+    try:
+        await db.execute(delete(AuthDB).where(AuthDB.uid == str(request.headers["X-User-Id"])))
+        await db.commit()
+        background_tasks.add_task(deletion_task, request)
+        return {
+            "status": "True",
+        }
+    except HTTPError as e:
+        return {
+            "status": "False",
+            "message": str(e),
+        }
 
 @app.post("/login")
 async def login(
