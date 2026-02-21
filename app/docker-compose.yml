@@ -64,6 +64,10 @@ services:
       - "SERVICE_NAME='auth_service'"
       - "SECRET_KEY=${SECRET_KEY}"
       - "PUBLIC_KEY=${PUBLIC_KEY}"
+    volumes:
+      - ./services/auth-service:/service
+      - /app/venv/
+      - /app/__pycache__/
     depends_on:
       db:
         condition: service_healthy
@@ -84,6 +88,10 @@ services:
       - "DB_PORT=${DB_PORT}"
       - "DB_HOST=${DB_HOST}"
       - "SERVICE_NAME='favourite_service'"
+    volumes:
+      - ./services/favourite-service:/service
+      - /app/venv/
+      - /app/__pycache__/
     depends_on:
       db:
         condition: service_healthy
@@ -142,6 +150,10 @@ services:
       - "DB_PORT=${DB_PORT}"
       - "DB_HOST=${DB_HOST}"
       - "SERVICE_NAME='mail_service'"
+    volumes:
+      - ./services/mail-service:/service
+      - /app/venv/
+      - /app/__pycache__/
     depends_on:
       db:
         condition: service_healthy
@@ -162,6 +174,10 @@ services:
       - "DB_PORT=${DB_PORT}"
       - "DB_HOST=${DB_HOST}"
       - "SERVICE_NAME='media_service'"
+    volumes:
+      - ./services/media-service:/service
+      - /app/venv/
+      - /app/__pycache__/
     depends_on:
       db:
         condition: service_healthy
@@ -183,6 +199,10 @@ services:
       - "DB_HOST=${DB_HOST}"
       - "SERVICE_NAME='post_service'"
       - "MEILISEARCH_KEY=${MEILISEARCH_KEY}"
+    volumes:
+      - ./services/post-service:/service
+      - /app/venv/
+      - /app/__pycache__/
     depends_on:
       db:
         condition: service_healthy
@@ -225,6 +245,10 @@ services:
       - "DB_PORT=${DB_PORT}"
       - "DB_HOST=${DB_HOST}"
       - "SERVICE_NAME='user_service'"
+    volumes:
+      - ./services/user-service:/service
+      - /app/venv/
+      - /app/__pycache__/
     depends_on:
       db:
         condition: service_healthy

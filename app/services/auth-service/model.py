@@ -12,6 +12,7 @@ class AuthDB(Base):
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     role: Mapped[int] = mapped_column(Integer, nullable=False)
     token_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
 
 class TokenDB(Base):
     __tablename__ = "auth-service-tokens"

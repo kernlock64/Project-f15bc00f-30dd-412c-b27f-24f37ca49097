@@ -30,6 +30,8 @@ limits = Limits(
 async def lifespan(cl: FastAPI):
     client = httpx.AsyncClient(limits=limits, timeout=5)
     cl.state.http_client = client
+    factory = get_async_session()
+    app.state.db = factory
     try:
         yield
     finally:
@@ -45,9 +47,10 @@ app = FastAPI(lifespan=lifespan)
 
 
 async def get_db():
-    factory = get_async_session()
+    factory = app.state.db
     async with factory() as session:
         yield session
+
 
 ROUTES = {
 
@@ -56,15 +59,9 @@ ROUTES = {
     "favorites": "http://favorite-service:5005",
 }
 
-def logout(
-        db: AsyncSession = Depends(get_db),
-):
-    pass
-
 @app.middleware("http")
 async def proxy(request: Request, call_next):
-
-    if request.url.path in ["/registration", "/login"]:
+    if request.url.path in ["/registration", "/login", "/refresh"]:
         return await call_next(request)
 
     access_token = request.cookies.get("access_t")
@@ -100,12 +97,33 @@ async def proxy(request: Request, call_next):
             }
         )
 
-    headers = MutableHeaders(request._headers)
+    eng = app.state.db
+    async with eng() as db:
+        version = await db.execute(select(AuthDB.token_version).where(AuthDB.uid == payload["uid"]))
+        v = version.scalar_one_or_none()
+
+    if v != payload["tov"]:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "status": "False",
+                "message": "Unauthorized",
+            }
+        )
+
+    headers = MutableHeaders(scope=request.scope)
 
     headers['X-User-Id'] = payload["uid"]
     headers['X-Role'] = str(payload["role"])
 
-    return await call_next(request)
+    if hasattr(request, "_headers"):
+        delattr(request, "_headers")
+
+    resp = await call_next(request)
+    resp.headers["X-User-Id"] = payload["uid"]
+
+    return resp
+
 
 async def check_data(password, email, username, session: AsyncSession):
     check_flag = False
@@ -146,6 +164,22 @@ async def check_data(password, email, username, session: AsyncSession):
 
     return {"status": "True", }
 
+@app.post("/logout")
+async def logout(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+):
+    uid = request.headers.get('X-User-Id')
+    tokens = await db.execute(select(AuthDB.token_version).where(AuthDB.uid == uid))
+    token = tokens.scalars().one_or_none()
+    token += 1
+    await db.commit()
+
+    return {
+        "status": "True",
+    }
+
+
 @app.post("/registration")
 async def registration(
         response: Response,
@@ -155,9 +189,14 @@ async def registration(
         username: str = Form(...),
         role: int = Form(...),
         password: str = Form(...),
-        email: str = Form(...)
+        email: str = Form(...),
+        telephone: str = Form(None),
 ):
     try:
+        if not telephone and role == 2:
+            return {"status": "False",
+                    "message": "Пожалуйста, предоставьте телефонный номер!"}
+
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
 
         content = await file.read()
@@ -171,16 +210,23 @@ async def registration(
         if check["status"] == "False":
             return {"status": check["status"], "message": check["message"]}
 
-        user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(tz=timezone.utc), uid=str(uuid.uuid4()),
-                      role=role)
+        user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(tz=timezone.utc),
+                      uid=str(uuid.uuid4()),
+                      role=role, status="ACTIVE", token_version=1) if role == 1 else AuthDB(email=email,
+                                                                                            hashed_password=hashed_password,
+                                                                                            date=datetime.now(
+                                                                                                tz=timezone.utc),
+                                                                                            uid=str(uuid.uuid4()),
+                                                                                            role=role, status="PENDING",
+                                                                                            token_version=1)
         session.add(user)
 
         payload = {
             "role": role,
             "uid": user.uid,
             "jit": str(uuid.uuid4()),
-            "lifetime": "900",
             "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
+            "tov": user.token_version,
         }
 
         data = {
@@ -188,6 +234,7 @@ async def registration(
             "email": email,
             "role": role,
             "uid": user.uid,
+            "telephone": telephone,
         }
 
         resp = await client.post("http://user-service:5004/users/add-user", data=data, files=files)
@@ -196,6 +243,12 @@ async def registration(
             return {"status": "False", "message": str(resp.json()["message"])}
         else:
             await session.commit()
+
+            if user.role == 2:
+                return {
+                    "status": "True",
+                    "message": "Ваша заявление принято на рассмотрение!"
+                }
 
             prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
 
@@ -218,11 +271,12 @@ async def registration(
             "message": str(err),
         }
 
-async def deletion_task(
-        client: AsyncClient = Depends(get_httpx),
-):
+
+async def deletion_task(uid,
+                        client: AsyncClient,
+                        ):
     try:
-        response = client.post("http://user-service:5004/users/delete-user")
+        await client.post("http://user-service:5004/users/delete-user", headers={"X-User-Id": str(uid)})
         return {"status": "True"}
     except HTTPError as err:
         return {
@@ -236,11 +290,17 @@ async def delete(
         request: Request,
         background_tasks: BackgroundTasks,
         db: AsyncSession = Depends(get_db),
+        client: AsyncClient = Depends(get_httpx),
 ):
     try:
-        await db.execute(delete(AuthDB).where(AuthDB.uid == str(request.headers["X-User-Id"])))
+        uid = request.headers.get("X-User-Id")
+
+        background_tasks.add_task(deletion_task, uid, client)
+        users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
+        user = users.scalar_one_or_none()
+        user.token_version += 1
+        await db.delete(user)
         await db.commit()
-        background_tasks.add_task(deletion_task, request)
         return {
             "status": "True",
         }
@@ -250,12 +310,14 @@ async def delete(
             "message": str(e),
         }
 
+
 @app.post("/login")
 async def login(
         response: Response,
+        background_tasks: BackgroundTasks,
         session: AsyncSession = Depends(get_db),
         password: str = Form(...),
-        email: str = Form(...)
+        email: str = Form(...),
 ):
     try:
 
@@ -276,12 +338,25 @@ async def login(
                 "message": "Неверный адрес электронной почты или пароль!",
             }
 
+        if user.status != "ACTIVE":
+            if user.status == "PENDING":
+                return {
+                    "status": "False",
+                    "message": "Заявка на рассмотрении. Благодарим за ожидание, в скором времени с вами свяжуться"
+                }
+            if user.status == "REJECTED":
+                background_tasks.add_task(deletion_task, str(user.uid))
+                return {
+                    "status": "False",
+                    "message": "К сожалению, ваша заявка была отклонена."
+                }
+
         payload = {
             "role": user.role,
             "uid": user.uid,
             "jit": str(uuid.uuid4()),
-            "lifetime": "900",
             "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
+            "tov": user.token_version,
         }
 
         prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
@@ -378,7 +453,6 @@ async def refresh(
         response: Response,
         session: AsyncSession = Depends(get_db),
 ):
-
     try:
 
         refreshment_t = request.cookies.get("refreshment_t")
@@ -423,8 +497,8 @@ async def refresh(
                 "role": user.role,
                 "uid": user.uid,
                 "jit": str(uuid.uuid4()),
-                "lifetime": "900",
                 "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
+                "tov": user.token_version,
             }
 
             prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
@@ -432,7 +506,7 @@ async def refresh(
             access_t = jwt.encode(payload, prv_key, algorithm="ES256")
             refreshment_t = str(secrets.token_urlsafe(64))
             n_token = TokenDB(uid=user.uid, token=refreshment_t,
-                            expires_at=(datetime.now(tz=timezone.utc) + timedelta(days=30)), is_expired=False)
+                              expires_at=(datetime.now(tz=timezone.utc) + timedelta(days=30)), is_expired=False)
             session.add(n_token)
             await session.commit()
 
@@ -447,8 +521,9 @@ async def refresh(
             "message": str(err),
         }
 
+
 @app.api_route("/{path:path}", methods=["GET", "POST", "DELETE"])
-async def proxy(request: Request, client: AsyncClient = Depends(get_httpx),):
+async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
     path = request.url.path
     target_url = ROUTES.get(path.split("/")[1])
 
@@ -459,7 +534,7 @@ async def proxy(request: Request, client: AsyncClient = Depends(get_httpx),):
         }
 
     if request.url.query:
-        final_url = f"{target_url+path}?{request.url.query}"
+        final_url = f"{target_url + path}?{request.url.query}"
     else:
         final_url = target_url + path
 
