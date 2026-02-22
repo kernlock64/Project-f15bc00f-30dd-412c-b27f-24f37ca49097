@@ -56,7 +56,7 @@ ROUTES = {
 
     "users": "http://user-service:5004",
     "posts": "http://post-service:5003",
-    "favorites": "http://favorite-service:5005",
+    "favourites": "http://favourite-service:5005",
 }
 
 @app.middleware("http")
