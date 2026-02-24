@@ -318,6 +318,7 @@ async def login(
         session: AsyncSession = Depends(get_db),
         password: str = Form(...),
         email: str = Form(...),
+        client: AsyncClient = Depends(get_httpx),
 ):
     try:
 
@@ -342,10 +343,15 @@ async def login(
             if user.status == "PENDING":
                 return {
                     "status": "False",
-                    "message": "Заявка на рассмотрении. Благодарим за ожидание, в скором времени с вами свяжуться"
+                    "message": "Заявка на рассмотрении. Благодарим за ожидание, в скором времени с вами свяжутся"
                 }
             if user.status == "REJECTED":
-                background_tasks.add_task(deletion_task, str(user.uid))
+                background_tasks.add_task(deletion_task, str(user.uid), client)
+                users = await session.execute(select(AuthDB).where(AuthDB.uid == str(user.uid)))
+                user = users.scalar_one_or_none()
+                user.token_version += 1
+                await session.delete(user)
+                await session.commit()
                 return {
                     "status": "False",
                     "message": "К сожалению, ваша заявка была отклонена."
