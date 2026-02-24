@@ -467,10 +467,10 @@ async def refresh(
         token = tokens.scalars().one_or_none()
         uid = token.uid
 
-        if not token:
+        if not token or not uid:
             return {
                 "status": "False",
-                "message": "Invalid token!"
+                "message": "Invalid data!"
             }
 
         if token.is_expired:
