@@ -10,6 +10,7 @@ class CustomersDB(Base):
     email: Mapped[Text] = mapped_column(Text, nullable=False)
     image: Mapped[Integer] = mapped_column(Integer, nullable=False)
     date_created: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
+    full_name: Mapped[Text] = mapped_column(Text)
 
 class ProdDB(Base):
     __tablename__ = "user-service-prod"
