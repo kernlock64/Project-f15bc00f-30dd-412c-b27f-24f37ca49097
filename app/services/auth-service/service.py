@@ -546,7 +546,6 @@ async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
         url=final_url,
         headers=headers,
         content=request.stream(),
-        cookies=request.cookies,
     )
 
     response = await client.send(req, stream=True)
