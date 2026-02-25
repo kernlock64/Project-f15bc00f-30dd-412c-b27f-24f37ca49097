@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form, status, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.responses import StreamingResponse
 from starlette.datastructures import MutableHeaders
 import httpx
@@ -61,30 +61,34 @@ ROUTES = {
 
 @app.middleware("http")
 async def proxy(request: Request, call_next):
-    if request.url.path in ["/registration", "/login", "/refresh"]:
+    if request.url.path in {"/registration", "/login", "/refresh", "/forgot-password"}:
         return await call_next(request)
 
-    access_token = request.cookies.get("access_t")
+    token = request.cookies.get("access_t")
+    if not token:
+        token = request.query_params.get("r_token")
     public_key = os.getenv("PUBLIC_KEY").replace("\\n", "\n")
 
-    if not access_token:
+    print(token)
+
+    if not token:
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={
                 "status": "False",
-                "message": "Unauthorized",
+                "message": "Unauthorized!",
             }
         )
 
     try:
-        payload = jwt.decode(access_token, public_key, algorithms="ES256")
+        payload = jwt.decode(token, public_key, algorithms="ES256")
 
     except jwt.InvalidSignatureError:
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={
                 "status": "False",
-                "message": "Unauthorized",
+                "message": "Unauthorized!",
             }
         )
 
@@ -98,31 +102,70 @@ async def proxy(request: Request, call_next):
         )
 
     eng = app.state.db
-    async with eng() as db:
-        version = await db.execute(select(AuthDB.token_version).where(AuthDB.uid == payload["uid"]))
-        v = version.scalar_one_or_none()
+    if payload["thm"] == "access":
+        async with eng() as db:
+            version = await db.execute(select(AuthDB.token_version).where(AuthDB.uid == payload["uid"]))
+            v = version.scalar_one_or_none()
 
-    if v != payload["tov"]:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "status": "False",
-                "message": "Unauthorized",
-            }
-        )
+            if not v:
+                return {
+                    "status": "False",
+                    "message": "User is not exists!"
+                }
 
-    headers = MutableHeaders(scope=request.scope)
+        if v != payload["tov"]:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "status": "False",
+                    "message": "Unauthorized!",
+                }
+            )
 
-    headers['X-User-Id'] = payload["uid"]
-    headers['X-Role'] = str(payload["role"])
+        headers = MutableHeaders(scope=request.scope)
 
-    if hasattr(request, "_headers"):
-        delattr(request, "_headers")
+        headers['X-User-Id'] = payload["uid"]
+        headers['X-Role'] = str(payload["role"])
 
-    resp = await call_next(request)
-    resp.headers["X-User-Id"] = payload["uid"]
+        if hasattr(request, "_headers"):
+            delattr(request, "_headers")
 
-    return resp
+        resp = await call_next(request)
+        resp.headers["X-User-Id"] = payload["uid"]
+
+        return resp
+
+    elif payload["thm"] == "reset":
+        async with eng() as db:
+            users = await db.execute(select(AuthDB).where(AuthDB.email == payload["e"]))
+            u = users.scalar_one_or_none()
+
+        if u.hashed_password != payload["p"]:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "status": "False",
+                    "message": "Password has been already changed!",
+                }
+            )
+
+        headers = MutableHeaders(scope=request.scope)
+
+        headers['X-User-Id'] = u.uid
+
+        if hasattr(request, "_headers"):
+            delattr(request, "_headers")
+
+        resp = await call_next(request)
+        resp.headers["X-User-Id"] = u.uid
+
+        return resp
+
+    return {
+        "status": "False",
+        "message": "Unexpected error!"
+    }
+
 
 
 async def check_data(password, email, username, session: AsyncSession):
@@ -164,21 +207,66 @@ async def check_data(password, email, username, session: AsyncSession):
 
     return {"status": "True", }
 
+@app.post("/forgot-password")
+async def forgot_password(
+        db: AsyncSession = Depends(get_db),
+        email: str = Form(...),
+        client: AsyncClient = Depends(get_httpx),
+):
+    try:
+        res = await db.execute(select(AuthDB).where(AuthDB.email == email))
+        user = res.scalar_one_or_none()
+
+        if user:
+            payload = {
+                "e": user.email,
+                "p": user.hashed_password,
+                "thm": "reset",
+                "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=300)
+            }
+            prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
+            reset_t = jwt.encode(payload, prv_key, algorithm="ES256")
+
+  #DEBUG-INFO
+            print(reset_t)
+  #DEBUG-INFO
+
+            await client.post("http://mail-service:5002/mail/on-password-forget", data={"r_token": reset_t})
+
+        return {
+            "status": "True",
+            "message": "Запрос на смену пароля был успешно создан!"
+        }
+
+    except HTTPError as err:
+        return {
+            "status": "False",
+            "message": err
+        }
+
+
 @app.post("/logout")
 async def logout(
         request: Request,
         db: AsyncSession = Depends(get_db),
 ):
     uid = request.headers.get('X-User-Id')
-    tokens = await db.execute(select(AuthDB.token_version).where(AuthDB.uid == uid))
-    token = tokens.scalars().one_or_none()
-    token += 1
+
+    await db.execute(
+        update(AuthDB)
+        .where(AuthDB.uid == uid)
+        .values(token_version=AuthDB.token_version + 1))
+
+    await db.execute(
+        update(TokenDB)
+        .where(TokenDB.uid == uid)
+        .values(is_expired=True))
+
     await db.commit()
 
     return {
         "status": "True",
     }
-
 
 @app.post("/registration")
 async def registration(
@@ -227,6 +315,7 @@ async def registration(
             "jit": str(uuid.uuid4()),
             "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
             "tov": user.token_version,
+            "thm": "access"
         }
 
         data = {
@@ -296,9 +385,14 @@ async def delete(
         uid = request.headers.get("X-User-Id")
 
         background_tasks.add_task(deletion_task, uid, client)
+
+        await db.execute(
+            update(TokenDB)
+            .where(TokenDB.uid == uid)
+            .values(is_expired=True))
+
         users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
         user = users.scalar_one_or_none()
-        user.token_version += 1
         await db.delete(user)
         await db.commit()
         return {
@@ -363,6 +457,7 @@ async def login(
             "jit": str(uuid.uuid4()),
             "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
             "tov": user.token_version,
+            "thm": "access"
         }
 
         prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
@@ -505,6 +600,7 @@ async def refresh(
                 "jit": str(uuid.uuid4()),
                 "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
                 "tov": user.token_version,
+                "thm": "access"
             }
 
             prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
