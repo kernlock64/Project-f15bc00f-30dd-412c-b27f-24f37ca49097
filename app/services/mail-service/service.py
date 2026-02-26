@@ -9,6 +9,7 @@ from db_init import get_async_session, engine
 from model import MailDB
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi_mail import ConnectionConfig, MessageSchema, MessageType, FastMail
 
 limits = Limits(
     max_connections=700,
@@ -39,20 +40,12 @@ async def get_db():
         yield session
 
 @app.post("/mail/on-password-change")
-async def password_change(
-        r_token: str = Form(...),
-):
-    return {
-        "status": "True"
-    }
+async def password_change():
+    pass
 
 @app.post("/mail/on-password-forget")
-async def password_forget(
-        r_token: str = Form(...),
-):
-    return {
-        "status": "True"
-    }
+async def password_forget():
+    pass
 
 @app.post("/mail/on-suspicious-activity")
 async def suspicious_activity():
@@ -67,5 +60,5 @@ async def registration_provider():
     pass
 
 @app.post("/mail/on-deletion")
-async def registration_provider():
+async def account_deletion():
     pass
