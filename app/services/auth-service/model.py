@@ -7,6 +7,7 @@ class AuthDB(Base):
     __tablename__ = "auth-service-users"
 
     uid: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False, )
+    username: Mapped[str] = mapped_column(Text, nullable=False, )
     hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
     date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)

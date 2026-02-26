@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #000000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #000000; min-height: 100vh;">
+        <tr>
+            <td align="center" style="padding: 60px 20px;">
+                <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 440px; text-align: center;">
+                    <tr>
+                        <td style="padding-bottom: 40px;">
+                            <div style="display: inline-block; width: 48px; height: 48px; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; line-height: 48px; color: #ffffff; font-weight: bold; font-size: 20px;">
+                                {{ body.project_name[0] }}
+                            </div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding-bottom: 16px;">
+                            <h1 style="color: #ffffff; font-size: 28px; font-weight: 600; margin: 0; letter-spacing: -0.02em;">
+                                Здравствуйте,
+                            </h1>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding-bottom: 32px;">
+                            <p style="color: #888888; font-size: 16px; line-height: 1.6; margin: 0;">
+                                Мы получили ваш запрос на создание аккаунта. <br>
+                                С вами скоро свяжется менеджер <strong>{{ body.project_name }}</strong> по указанному номеру телефона.
+                            </p>
+                        </td>
+                    </tr>
+
+
+                    <tr>
+                        <td style="padding-top: 40px;">
+                            <p style="color: #222222; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; margin: 0;">
+                                &copy; 2026 {{ body.project_name }} &bull; Sochi, Russia
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -61,6 +61,18 @@ services:
     networks:
       - internal
 
+# =====DEBUG=FOR=MAIL-SERVICE=====
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    restart: always
+    networks:
+      - internal
+# =====DEBUG=FOR=MAIL-SERVICE=====
+
   meilisearch:
     image: getmeili/meilisearch:latest
     container_name: search-engine

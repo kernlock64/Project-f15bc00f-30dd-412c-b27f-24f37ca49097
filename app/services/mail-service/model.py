@@ -7,7 +7,6 @@ class MailDB(Base):
     __tablename__ = "mail-service"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
-    sender_uid: Mapped[str] = mapped_column(Text, nullable=False)
-    receiver_uid: Mapped[str] = mapped_column(Text, nullable=False)
+    receiver_email: Mapped[str] = mapped_column(Text, nullable=False)
     date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     theme: Mapped[str] = mapped_column(Text, nullable=False)

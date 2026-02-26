@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form, status, BackgroundTasks
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from starlette.responses import StreamingResponse
 from starlette.datastructures import MutableHeaders
 import httpx
@@ -58,6 +58,7 @@ ROUTES = {
     "posts": "http://post-service:5003",
     "favourites": "http://favourite-service:5005",
 }
+
 
 @app.middleware("http")
 async def proxy(request: Request, call_next):
@@ -167,7 +168,6 @@ async def proxy(request: Request, call_next):
     }
 
 
-
 async def check_data(password, email, username, session: AsyncSession):
     check_flag = False
 
@@ -207,6 +207,7 @@ async def check_data(password, email, username, session: AsyncSession):
 
     return {"status": "True", }
 
+
 @app.post("/forgot-password")
 async def forgot_password(
         db: AsyncSession = Depends(get_db),
@@ -227,9 +228,9 @@ async def forgot_password(
             prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
             reset_t = jwt.encode(payload, prv_key, algorithm="ES256")
 
-  #DEBUG-INFO
+            # DEBUG-INFO
             print(reset_t)
-  #DEBUG-INFO
+            # DEBUG-INFO
 
             await client.post("http://mail-service:5002/mail/on-password-forget", data={"r_token": reset_t})
 
@@ -264,9 +265,12 @@ async def logout(
 
     await db.commit()
 
-    return {
-        "status": "True",
-    }
+    response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
+    response.delete_cookie(key="refreshment_t")
+    response.delete_cookie(key="access_t")
+
+    return response
+
 
 @app.post("/registration")
 async def registration(
@@ -300,13 +304,15 @@ async def registration(
 
         user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(tz=timezone.utc),
                       uid=str(uuid.uuid4()),
-                      role=role, status="ACTIVE", token_version=1) if role == 1 else AuthDB(email=email,
-                                                                                            hashed_password=hashed_password,
-                                                                                            date=datetime.now(
-                                                                                                tz=timezone.utc),
-                                                                                            uid=str(uuid.uuid4()),
-                                                                                            role=role, status="PENDING",
-                                                                                            token_version=1)
+                      role=role, status="ACTIVE", token_version=1, username=username) if role == 1 else AuthDB(
+            email=email,
+            hashed_password=hashed_password,
+            date=datetime.now(
+                tz=timezone.utc),
+            uid=str(uuid.uuid4()),
+            role=role, status="PENDING",
+            token_version=1,
+            username=username, )
         session.add(user)
 
         payload = {
@@ -326,10 +332,23 @@ async def registration(
             "telephone": telephone,
         }
 
-        resp = await client.post("http://user-service:5004/users/add-user", data=data, files=files)
+        templ_data = {
+            "email_to": email,
+            "username": username,
+        }
+
+        resp = await client.post("http://user-service:5004/users/add-user", data=data, files=files,
+                                 headers={"Content-Type": "multipart/form-data"})
         if resp.status_code != 200:
             await session.rollback()
             return {"status": "False", "message": str(resp.json()["message"])}
+
+        resp = await client.post("http://mail-service:5002/mail/on-registration", json=templ_data,
+                                 headers={"Content-Type": "application/json"})
+        if resp.status_code != 200:
+            await session.rollback()
+            return {"status": "False", "message": str(resp.json()["message"])}
+
         else:
             await session.commit()
 
@@ -395,9 +414,13 @@ async def delete(
         user = users.scalar_one_or_none()
         await db.delete(user)
         await db.commit()
-        return {
-            "status": "True",
-        }
+
+        response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
+        response.delete_cookie(key="refreshment_t")
+        response.delete_cookie(key="access_t")
+
+        return response
+
     except HTTPError as e:
         return {
             "status": "False",
