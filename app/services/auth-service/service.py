@@ -57,6 +57,7 @@ ROUTES = {
     "users": "http://user-service:5004",
     "posts": "http://post-service:5003",
     "favourites": "http://favourite-service:5005",
+    "admin": "http://admin-service:5006",
 }
 
 
@@ -228,11 +229,14 @@ async def forgot_password(
             prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
             reset_t = jwt.encode(payload, prv_key, algorithm="ES256")
 
-            # DEBUG-INFO
-            print(reset_t)
-            # DEBUG-INFO
+            templ_data = {
+                "email_to": user.email,
+                "username": user.username,
+                "r_token": reset_t
+            }
 
-            await client.post("http://mail-service:5002/mail/on-password-forget", data={"r_token": reset_t})
+            await client.post("http://mail-service:5002/mail/on-password-forget", json=templ_data,
+                              headers={"Content-Type": "application/json"})
 
         return {
             "status": "True",
@@ -343,20 +347,27 @@ async def registration(
             await session.rollback()
             return {"status": "False", "message": str(resp.json()["message"])}
 
-        resp = await client.post("http://mail-service:5002/mail/on-registration", json=templ_data,
-                                 headers={"Content-Type": "application/json"})
-        if resp.status_code != 200:
-            await session.rollback()
-            return {"status": "False", "message": str(resp.json()["message"])}
-
         else:
             await session.commit()
 
             if user.role == 2:
+
+                resp = await client.post("http://mail-service:5002/mail/on-requesting-provider", json=templ_data,
+                                         headers={"Content-Type": "application/json"})
+                if resp.status_code != 200:
+                    await session.rollback()
+                    return {"status": "False", "message": str(resp.json()["message"])}
+
                 return {
                     "status": "True",
                     "message": "Ваша заявление принято на рассмотрение!"
                 }
+
+            resp = await client.post("http://mail-service:5002/mail/on-registration", json=templ_data,
+                                     headers={"Content-Type": "application/json"})
+            if resp.status_code != 200:
+                await session.rollback()
+                return {"status": "False", "message": str(resp.json()["message"])}
 
             prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
 
@@ -414,6 +425,17 @@ async def delete(
         user = users.scalar_one_or_none()
         await db.delete(user)
         await db.commit()
+
+        templ_data = {
+            "email_to": user.email,
+            "username": user.username,
+        }
+
+        resp = await client.post("http://mail-service:5002/mail/on-deletion", json=templ_data,
+                                 headers={"Content-Type": "application/json"})
+        if resp.status_code != 200:
+            await db.rollback()
+            return {"status": "False", "message": str(resp.json()["message"])}
 
         response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
         response.delete_cookie(key="refreshment_t")
@@ -510,6 +532,7 @@ async def change_password(
         request: Request,
         session: AsyncSession = Depends(get_db),
         new_password: str = Form(...),
+        client: AsyncClient = Depends(get_httpx),
 ):
     try:
         headers = request.headers
@@ -526,6 +549,17 @@ async def change_password(
 
         user.hashed_password = hashlib.sha256(new_password.encode()).hexdigest()
         await session.commit()
+
+        templ_data = {
+            "email_to": user.email,
+            "username": user.username,
+        }
+
+        resp = await client.post("http://mail-service:5002/mail/on-password-change", json=templ_data,
+                                 headers={"Content-Type": "application/json"})
+        if resp.status_code != 200:
+            await session.rollback()
+            return {"status": "False", "message": str(resp.json()["message"])}
 
         return {
             "status": "True",
@@ -576,6 +610,7 @@ async def refresh(
         request: Request,
         response: Response,
         session: AsyncSession = Depends(get_db),
+        client: AsyncClient = Depends(get_httpx),
 ):
     try:
 
@@ -583,7 +618,11 @@ async def refresh(
 
         tokens = await session.execute(select(TokenDB).where(TokenDB.token == refreshment_t))
         token = tokens.scalars().one_or_none()
+
         uid = token.uid
+
+        users = await session.execute(select(AuthDB).where(AuthDB.uid == uid))
+        user = users.scalars().one_or_none()
 
         if not token or not uid:
             return {
@@ -592,11 +631,29 @@ async def refresh(
             }
 
         if token.is_expired:
-            e_tokens = await session.execute(select(TokenDB).where(TokenDB.uid == uid))
-            for t in e_tokens.scalars():
-                t.is_expired = True
+
+            await session.execute(
+                update(AuthDB)
+                .where(AuthDB.uid == uid)
+                .values(token_version=AuthDB.token_version + 1))
+
+            await session.execute(
+                update(TokenDB)
+                .where(TokenDB.uid == uid)
+                .values(is_expired=True))
 
             await session.commit()
+
+            templ_data = {
+                "email_to": user.email,
+                "username": user.username,
+            }
+
+            resp = await client.post("http://mail-service:5002/mail/on-suspicious-activity", json=templ_data,
+                                     headers={"Content-Type": "application/json"})
+            if resp.status_code != 200:
+                await session.rollback()
+                return {"status": "False", "message": str(resp.json()["message"])}
 
             return {
                 "status": "False",
@@ -613,9 +670,6 @@ async def refresh(
 
             token.is_expired = True
             await session.commit()
-
-            users = await session.execute(select(AuthDB).where(AuthDB.uid == uid))
-            user = users.scalars().one_or_none()
 
             payload = {
                 "role": user.role,

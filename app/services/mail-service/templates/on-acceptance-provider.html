@@ -4,62 +4,54 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #040b78; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
-    <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #000a64; min-height: 100vh;">
-        <tr>
-            <td align="center" style="padding: 60px 20px;">
-                <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 440px; text-align: center;">
-                    <tr>
-                        <td style="padding-bottom: 40px;">
-                            <div style="display: inline-block; width: 48px; height: 48px; background: #03094c; border: 1px solid #0135f1; border-radius: 12px; line-height: 48px; color: #fcfcfc; font-weight: bold; font-size: 20px;">
-                                {{ body.project_name[0] }}
-                            </div>
-                        </td>
-                    </tr>
+<body style="margin: 0; padding: 0; background-color: #E9EDEE; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+<table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #E9EDEE; padding: 50px 20px;">
+    <tr>
+        <td align="center">
 
-                    <tr>
-                        <td style="padding-bottom: 16px;">
-                            <h1 style="color: #ffffff; font-size: 28px; font-weight: 600; margin: 0; letter-spacing: -0.02em;">
-                                Добро пожаловать
-                            </h1>
-                        </td>
-                    </tr>
+            <table width="100%" border="0" cellspacing="0" cellpadding="0"
+                   style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); border: 1px solid #d1d5db;">
 
-                    <tr>
-                        <td style="padding-bottom: 32px;">
-                            <p style="color: #888888; font-size: 16px; line-height: 1.6; margin: 0;">
-                                Привет, {{ body.name }}. Ваше заявление на регистрацию было одобрено администрацией. <br>
-                                Ваш аккаунт в <strong>{{ body.project_name }}</strong> готов к работе.
-                            </p>
-                        </td>
-                    </tr>
 
-                    <tr>
-                        <td style="padding-bottom: 48px;">
-                            <a href="{{ body.link }}" style="display: inline-block; background-color: #ffffff; color: #000000; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 600;">
-                                Начать работу
-                            </a>
-                        </td>
-                    </tr>
+                <tr>
+                    <td style="padding: 0; line-height: 0; font-size: 0;">
+                        <img src="cid:logo_image"
+                             width="600"
+                             alt="Wide Banner"
+                             style="display: block; width: 100%; height: auto; border: 0; border-radius: 16px 16px 0 0;">
+                    </td>
+                </tr>
 
-                    <tr>
-                        <td style="border-top: 1px solid #fcfcfc; padding-top: 32px;">
-                            <p style="color: #ffffff; font-size: 12px; line-height: 1.6; margin: 0;">
-                                Если вы не регистрировались в сервисе, <br> просто проигнорируйте это письмо.
-                            </p>
-                        </td>
-                    </tr>
 
-                    <tr>
-                        <td style="padding-top: 40px;">
-                            <p style="color: #a4a5ac; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; margin: 0;">
-                                &copy; 2026 {{ body.project_name }} &bull; Sochi, Russia
-                            </p>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
+                <tr>
+                    <td style="padding: 48px 40px; text-align: center;">
+                        <h1 style="color: #1e293b; font-size: 26px; font-weight: 700; margin: 0 0 16px 0; letter-spacing: -0.02em;">
+                            Здравствуйте, {{ username }}!
+                        </h1>
+
+                        <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 0 0 32px 0;">
+                            Благодарим вас за ожидание, ваш запрос на регистрацию был одобрен администрацией.
+                        </p>
+
+
+                        <a style="display: inline-block; background-color: #003366; color: #ffffff; padding: 14px 36px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: 600;">
+                            Войти в личный кабинет
+                        </a>
+
+
+                        <div style="margin: 48px 0 24px 0; border-top: 1px solid #f1f5f9;"></div>
+                        <p style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin: 0;">
+                            Это письмо было отправлено автоматически. Пожалуйста, не отвечайте на него.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <p style="color: #64748b; font-size: 11px; margin-top: 30px; text-align: center; text-transform: uppercase; letter-spacing: 1px;">
+                &copy; 2026 Айсберг Маркет &bull; Сочи, Россия
+            </p>
+        </td>
+    </tr>
+</table>
 </body>
 </html>
