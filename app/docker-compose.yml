@@ -155,12 +155,17 @@ services:
       - internal
     environment:
       - "PYTHONPATH=."
+      - "DATABASE_URL=${ADMIN_DB_URL}"
       - "SERVICE_PORT=${ADMIN_PORT}"
       - "DB_USER=${DB_USER}"
       - "DB_PASSWORD=${DB_PASSWORD}"
       - "DB_PORT=${DB_PORT}"
       - "DB_HOST=${DB_HOST}"
       - "SERVICE_NAME='admin_service'"
+    volumes:
+      - ./services/admin-service:/service
+      - /app/venv/
+      - /app/__pycache__/
     depends_on:
       db:
         condition: service_healthy
@@ -198,22 +203,9 @@ services:
       - internal
     environment:
       - "PYTHONPATH=."
-      - "DATABASE_URL=${MEDIA_DB_URL}"
       - "SERVICE_PORT=${MEDIA_PORT}"
-      - "DB_USER=${DB_USER}"
-      - "DB_PASSWORD=${DB_PASSWORD}"
-      - "DB_PORT=${DB_PORT}"
-      - "DB_HOST=${DB_HOST}"
       - "SERVICE_NAME='media_service'"
-    volumes:
-      - ./services/media-service:/service
-      - /app/venv/
-      - /app/__pycache__/
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: always
-
+      -
   post-service:
     build: ./services/post-service
     expose:
