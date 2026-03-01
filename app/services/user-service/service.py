@@ -15,7 +15,7 @@ import os
 from httpx import Limits, AsyncClient, HTTPError
 
 from db_init import get_async_session, engine
-from model import AuthDB, TokenDB
+from model import CustomersDB, ProdDB
 from email_validator import EmailNotValidError, validate_email
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,21 +52,40 @@ async def get_db():
         yield session
 
 @app.get("/users/get-user")
-async def get_user():
-    pass
+async def get_user(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+        client: AsyncClient = Depends(get_httpx),
+):
+
+    uid = request.headers.get("X-User-Id")
+    role = request.headers.get("X-Role")
 
 @app.post("/users/add-user")
-async def add_user():
+async def add_user(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+):
     pass
 
 @app.post("/users/delete-user")
-async def delete_user():
+async def delete_user(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+):
     pass
 
 @app.post("/users/change-userdata")
-async def change_userdata():
+async def change_userdata(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+):
     pass
 
 @app.post("/users/change-avatar")
-async def change_avatar():
+async def change_avatar(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+        client: AsyncClient = Depends(get_httpx),
+):
     pass
