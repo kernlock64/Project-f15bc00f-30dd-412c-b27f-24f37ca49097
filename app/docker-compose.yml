@@ -205,7 +205,7 @@ services:
       - "PYTHONPATH=."
       - "SERVICE_PORT=${MEDIA_PORT}"
       - "SERVICE_NAME='media_service'"
-      -
+
   post-service:
     build: ./services/post-service
     expose:

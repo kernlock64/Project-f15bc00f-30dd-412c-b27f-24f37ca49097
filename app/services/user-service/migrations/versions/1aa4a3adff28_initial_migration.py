@@ -25,20 +25,21 @@ def upgrade() -> None:
     sa.Column('id', sa.Text(), nullable=False),
     sa.Column('username', sa.Text(), nullable=False),
     sa.Column('email', sa.Text(), nullable=False),
-    sa.Column('image', sa.Integer(), nullable=False),
+    sa.Column('image', sa.Text(), nullable=False),
     sa.Column('date_created', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('full_name', sa.Text(),),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('user-service-prod',
     sa.Column('id', sa.Text(), nullable=False),
-    sa.Column('name', sa.Text(), nullable=False),
+    sa.Column('name', sa.Text(),),
     sa.Column('email', sa.Text(), nullable=False),
-    sa.Column('image', sa.Integer(), nullable=False),
+    sa.Column('image', sa.Text(), nullable=False),
     sa.Column('date_created', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('telephone', sa.Text(), nullable=False),
-    sa.Column('description', sa.Text(), nullable=False),
-    sa.Column('delivery_description', sa.Text(), nullable=False),
-    sa.Column('full_name', sa.Text(), nullable=False),
+    sa.Column('telephone', sa.Text(),),
+    sa.Column('description', sa.Text(),),
+    sa.Column('delivery_description', sa.Text(),),
+    sa.Column('full_name', sa.Text(),),
     sa.PrimaryKeyConstraint('id')
     )
     # ### end Alembic commands ###

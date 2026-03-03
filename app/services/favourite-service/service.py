@@ -160,7 +160,7 @@ async def delete_favourite(
                 "message": str(e), }
 
 
-@app.post("/favourites/deletion/")
+@app.post("/favourites/deletion")
 async def favourite_deletion(
         request: Request,
         db: AsyncSession = Depends(get_db),

@@ -341,8 +341,7 @@ async def registration(
             "username": username,
         }
 
-        resp = await client.post("http://user-service:5004/users/add-user", data=data, files=files,
-                                 headers={"Content-Type": "multipart/form-data"})
+        resp = await client.post("http://user-service:5004/users/add-user", data=data, files=files)
         if resp.status_code != 200:
             await session.rollback()
             return {"status": "False", "message": str(resp.json()["message"])}

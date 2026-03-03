@@ -69,7 +69,7 @@ async def add_image(
         ))
 
         return {
-            "message": "True",
+            "status": "True",
             "filename": name,
     }
     except HTTPException as e:
@@ -91,8 +91,31 @@ async def delete_image(
         ))
 
         return {
-            "message": "True",
+            "status": "True",
         }
+    except HTTPException as e:
+        return {
+            "status": "False",
+            "message": str(e),
+        }
+
+@app.post("/media/change-image/{filename}")
+async def change_image(
+                    filename: str,
+                    request: Request,
+                    client: AsyncClient = Depends(get_httpx),):
+    try:
+
+        await client.send(client.build_request(
+            method="PUT",
+            url=f"http://filer:8888/{filename}",
+            content=request.stream(),
+            headers={"Content-Type": "application/octet-stream"}
+        ))
+
+        return {
+            "status": "True",
+    }
     except HTTPException as e:
         return {
             "status": "False",
