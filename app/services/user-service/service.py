@@ -182,8 +182,6 @@ async def change_userdata(
     role = request.headers.get("X-Role")
     cls = CustomersDB if role == "1" else ProdDB
 
-    print(changed_data)
-
     users = await db.execute(select(cls).where(cls.id == uid))
     user = users.scalar_one_or_none()
 
