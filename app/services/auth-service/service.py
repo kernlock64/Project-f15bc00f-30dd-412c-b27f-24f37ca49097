@@ -711,13 +711,15 @@ async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
             "message": "Invalid URL!"
         }
 
+    exc = {"content-length", "host", "connection", "keep-alive", "proxy-authenticate", "te", "trailers",
+           "transfer-encoding", "upgrade"}
+
     if request.url.query:
         final_url = f"{target_url + path}?{request.url.query}"
     else:
         final_url = target_url + path
 
-    headers = dict(request.headers)
-    headers.pop("host", None)
+    headers = {key: value for key, value in request.headers.items() if key.lower() not in exc}
 
     req = client.build_request(
         method=request.method,

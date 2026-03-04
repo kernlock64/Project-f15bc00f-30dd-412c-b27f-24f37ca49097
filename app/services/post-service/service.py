@@ -12,9 +12,10 @@ async def get_post():
             "p_title": str(random.randint(1, 100)),
             }
 
-@app.post("/posts/get-posts")
+@app.get("/posts/get-posts")
 async def get_posts():
-    return {"status": "True",}
+    return {"status": "True",
+            "posts": []}
 
 @app.post("/posts/deletion")
 async def get_post():

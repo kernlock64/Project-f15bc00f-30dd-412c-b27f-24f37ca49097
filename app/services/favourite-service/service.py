@@ -91,6 +91,24 @@ async def is_favourite(
                 "message": str(e), }
 
 
+@app.post("/favourites/deletion")
+async def favourite_deletion(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+):
+    try:
+        await db.execute(delete(FavouriteDB).where(FavouriteDB.uid == str(request.headers["X-User-Id"])))
+        await db.commit()
+        return {
+            "status": "True",
+        }
+    except HTTPError as e:
+        return {
+            "status": "False",
+            "message": str(e),
+        }
+
+
 @app.post("/favourites/{post_id}")
 async def favourite_manager(
         request: Request,
@@ -158,21 +176,3 @@ async def delete_favourite(
     except HTTPError as e:
         return {"status": "False",
                 "message": str(e), }
-
-
-@app.post("/favourites/deletion")
-async def favourite_deletion(
-        request: Request,
-        db: AsyncSession = Depends(get_db),
-):
-    try:
-        await db.execute(delete(FavouriteDB).where(FavouriteDB.uid == str(request.headers["X-User-Id"])))
-        await db.commit()
-        return {
-            "status": "True",
-        }
-    except HTTPError as e:
-        return {
-            "status": "False",
-            "message": str(e),
-        }

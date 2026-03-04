@@ -56,7 +56,7 @@ async def get_user(
             "status": "False",
             "message": "Something went wrong!",
         }
-    if role == 1:
+    if role == "1":
         users = await db.execute(select(CustomersDB).where(CustomersDB.id == uid))
         user = users.scalar_one_or_none()
         return {
@@ -68,7 +68,7 @@ async def get_user(
             "full_name": str(user.full_name),
             "favourites": str(res1.json()["favourites"]),
         }
-    if role == 2:
+    if role == "2":
 
         res2 = await client.get(f"http://post-service:5003/posts/get-posts", headers=request.headers)
         if res2.json()["status"] != "True":
@@ -81,7 +81,7 @@ async def get_user(
         user = users.scalar_one_or_none()
         return {
             "id": str(user.id),
-            "username": str(user.username),
+            "name": str(user.name),
             "email": str(user.email),
             "image": str(user.image),
             "date_created": str(user.date_created),
@@ -125,7 +125,7 @@ async def add_user(
         }
     else:
         user = CustomersDB(id=uid, username=username, email=email, date_created=datetime.now(timezone.utc),
-                           image=resp.json()["filename"]) if role == 1 else ProdDB(id=uid, email=email,
+                           image=resp.json()["filename"]) if role == "1" else ProdDB(name=username, id=uid, email=email,
                                                                                    date_created=datetime.now(
                                                                                        timezone.utc),
                                                                                    image=resp.json()["filename"],
@@ -155,14 +155,14 @@ async def delete_user(
             "message": "Error deleting user",
         }
     else:
-        if role == 2:
+        if role == "2":
             res2 = await client.post(f"http://post-service:5003/posts/deletion", headers=request.headers)
             if res2.json()["status"] != "True":
                 return {
                     "status": "False",
                     "message": "Error deleting user",
                 }
-        cls = CustomersDB if role == 1 else ProdDB
+        cls = CustomersDB if role == "1" else ProdDB
         users = await db.execute(select(cls).where(cls.id == uid))
         user = users.scalar_one_or_none()
         await db.delete(user)
@@ -180,7 +180,9 @@ async def change_userdata(
 ):
     uid = request.headers.get("X-User-Id")
     role = request.headers.get("X-Role")
-    cls = CustomersDB if role == 1 else ProdDB
+    cls = CustomersDB if role == "1" else ProdDB
+
+    print(changed_data)
 
     users = await db.execute(select(cls).where(cls.id == uid))
     user = users.scalar_one_or_none()
@@ -207,7 +209,7 @@ async def change_avatar(
 ):
     uid = request.headers.get("X-User-Id")
     role = request.headers.get("X-Role")
-    cls = CustomersDB if role == 1 else ProdDB
+    cls = CustomersDB if role == "1" else ProdDB
 
     filename = await db.execute(select(cls.image).where(cls.id == uid))
 
