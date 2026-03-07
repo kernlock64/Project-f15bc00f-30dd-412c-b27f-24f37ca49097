@@ -1,3 +1,6 @@
+import os
+import uuid
+
 from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body
 import httpx
 from datetime import datetime, timezone
@@ -7,6 +10,8 @@ from db_init import get_async_session, engine
 from model import CustomersDB, ProdDB
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
+
+MEDIA_KEY = os.getenv("MEDIA_KEY")
 
 limits = Limits(
     max_connections=1000,
@@ -106,30 +111,38 @@ async def add_user(
         client: AsyncClient = Depends(get_httpx),
         username: str = Form(...),
         email: str = Form(...),
-        role: int = Form(...),
+        role: str = Form(...),
         uid: str = Form(...),
         telephone: str = Form(...),
 ):
-    content = await avatar.read()
+    async def read_file():
+        while chunk := await avatar.read(64 * 1024):
+            yield chunk
 
-    files = {
-        "avatar": (avatar.filename, content, avatar.content_type),
-    }
+    filename = str(uuid.uuid4())
 
-    resp = await client.post(f"http://media-service:5001/media/add-image/{avatar.content_type.split("/")[1]}",
-                             files=files)
-    if resp.json()["status"] != "True":
+    req = client.build_request(
+        method="POST",
+        url=f"http://media-service:5001/media/add-image/{avatar.content_type.split("/")[1]}",
+        headers={"X-Key": MEDIA_KEY, "X-Name": filename},
+        content=read_file(),
+    )
+
+    resp = await client.send(req, stream=True)
+
+    if resp.status_code != 200:
         return {
             "status": "False",
             "message": "Error adding image",
         }
     else:
         user = CustomersDB(id=uid, username=username, email=email, date_created=datetime.now(timezone.utc),
-                           image=resp.json()["filename"]) if role == "1" else ProdDB(name=username, id=uid, email=email,
-                                                                                   date_created=datetime.now(
-                                                                                       timezone.utc),
-                                                                                   image=resp.json()["filename"],
-                                                                                   telephone=telephone, )
+                           image=str(filename + avatar.content_type.split("/")[1])) if role == "1" else ProdDB(
+            name=username, id=uid, email=email,
+            date_created=datetime.now(
+                timezone.utc),
+            image=str(filename + avatar.content_type.split("/")[1]),
+            telephone=telephone, )
         db.add(user)
         await db.commit()
 
@@ -165,6 +178,10 @@ async def delete_user(
         cls = CustomersDB if role == "1" else ProdDB
         users = await db.execute(select(cls).where(cls.id == uid))
         user = users.scalar_one_or_none()
+
+        await client.post(f"http://media-service:5001/media/delete-image/{user.image}",
+                          headers={"X-Key": MEDIA_KEY})
+
         await db.delete(user)
         await db.commit()
         return {
@@ -217,7 +234,8 @@ async def change_avatar(
         "avatar": (avatar.filename, content, avatar.content_type),
     }
 
-    resp = await client.post(f"http://media-service:5001/media/change-image/{filename}", files=files)
+    resp = await client.post(f"http://media-service:5001/media/change-image/{filename}", files=files,
+                             headers={"X-Key": MEDIA_KEY})
     if resp.json()["status"] != "True":
         return {
             "status": "False",

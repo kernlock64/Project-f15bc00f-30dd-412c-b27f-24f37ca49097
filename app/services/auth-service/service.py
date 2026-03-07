@@ -71,8 +71,6 @@ async def proxy(request: Request, call_next):
         token = request.query_params.get("r_token")
     public_key = os.getenv("PUBLIC_KEY").replace("\\n", "\n")
 
-    print(token)
-
     if not token:
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -331,7 +329,7 @@ async def registration(
         data = {
             "username": username,
             "email": email,
-            "role": role,
+            "role": str(role),
             "uid": user.uid,
             "telephone": telephone,
         }

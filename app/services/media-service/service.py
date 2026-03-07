@@ -1,17 +1,16 @@
-import uuid
-
 from fastapi import FastAPI, Depends, Request, HTTPException
 import httpx
 from starlette.responses import StreamingResponse
 from httpx import Limits, AsyncClient
 from contextlib import asynccontextmanager
+import os
 
 limits = Limits(
     max_connections=700,
     max_keepalive_connections=50,
 )
 
-
+MEDIA_KEY = os.getenv("MEDIA_KEY")
 
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
@@ -55,15 +54,26 @@ async def get_image(filename: str,
 
 @app.post("/media/add-image/{ext}")
 async def add_image(
-                    ext: str,
-                    request: Request,
-                    client: AsyncClient = Depends(get_httpx),):
+        ext: str,
+        request: Request,
+        client: AsyncClient = Depends(get_httpx),
+        p_directory: str = None):
     try:
-        name = str(uuid.uuid4()) + f".{ext}"
+
+        key = request.headers.get("X-Key")
+        if key != MEDIA_KEY:
+            return {
+                "status": "False",
+                "message": "Unauthorized!",
+            }
+
+        name = str(request.headers.get("X-Name")) + f".{ext}"
+
+        url = "http://filer:8888/" + name if not p_directory else "http://filer:8888/" + p_directory + "/" + name
 
         await client.send(client.build_request(
             method="PUT",
-            url=f"http://filer:8888/{name}",
+            url=url,
             content=request.stream(),
             headers={"Content-Type": "application/octet-stream"}
         ))
@@ -71,22 +81,36 @@ async def add_image(
         return {
             "status": "True",
             "filename": name,
-    }
+        }
     except HTTPException as e:
         return {
             "status": "False",
             "message": str(e),
         }
 
+
 @app.delete("/media/delete-image/{filename}")
 async def delete_image(
         filename: str, request: Request,
-                 client: AsyncClient = Depends(get_httpx)):
+        directory: bool = False,
+        client: AsyncClient = Depends(get_httpx)):
     try:
+
+        key = request.headers.get("X-Key")
+        if key != MEDIA_KEY:
+            return {
+                "status": "False",
+                "message": "Unauthorized!",
+            }
+
+        if directory:
+            url=f"http://filer:8888/{filename}?recursive=true"
+        else:
+            url=f"http://filer:8888/{filename}"
 
         await client.send(client.build_request(
             method="DELETE",
-            url=f"http://filer:8888/{filename}",
+            url=url,
             content=request.stream()
         ))
 
@@ -99,12 +123,20 @@ async def delete_image(
             "message": str(e),
         }
 
+
 @app.post("/media/change-image/{filename}")
 async def change_image(
-                    filename: str,
-                    request: Request,
-                    client: AsyncClient = Depends(get_httpx),):
+        filename: str,
+        request: Request,
+        client: AsyncClient = Depends(get_httpx), ):
     try:
+
+        key = request.headers.get("X-Key")
+        if key != MEDIA_KEY:
+            return {
+                "status": "False",
+                "message": "Unauthorized!",
+            }
 
         await client.send(client.build_request(
             method="PUT",
@@ -115,7 +147,7 @@ async def change_image(
 
         return {
             "status": "True",
-    }
+        }
     except HTTPException as e:
         return {
             "status": "False",

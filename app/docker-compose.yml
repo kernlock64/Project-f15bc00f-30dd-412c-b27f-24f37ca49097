@@ -11,6 +11,7 @@ services:
     networks:
       - seaweed
     command: 'master -ip=master -ip.bind=0.0.0.0 -metricsPort=9324'
+    restart: always
 
   volume:
     image: chrislusf/seaweedfs
@@ -23,6 +24,7 @@ services:
     command: 'volume -ip=volume -master="master:9333" -ip.bind=0.0.0.0 -port=8080 -metricsPort=9325'
     depends_on:
       - master
+    restart: always
 
   filer:
     image: chrislusf/seaweedfs
@@ -39,6 +41,7 @@ services:
     depends_on:
       - master
       - volume
+    restart: always
 
   db:
     image: postgres:15
@@ -72,6 +75,17 @@ services:
     networks:
       - internal
 # =====DEBUG=FOR=MAIL-SERVICE=====
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: "admin"
+      RABBITMQ_DEFAULT_PASS: "${DB_PASSWORD}"
+    restart: always
 
   meilisearch:
     image: getmeili/meilisearch:latest
@@ -197,14 +211,16 @@ services:
 
   media-service:
     build: ./services/media-service
-    expose:
-      - "${MEDIA_PORT}"
+    ports:
+      - "${MEDIA_PORT}:${MEDIA_PORT}"
     networks:
       - internal
     environment:
       - "PYTHONPATH=."
       - "SERVICE_PORT=${MEDIA_PORT}"
       - "SERVICE_NAME='media_service'"
+      - "MEDIA_KEY=${MEDIA_KEY}"
+    restart: always
 
   post-service:
     build: ./services/post-service
@@ -222,6 +238,7 @@ services:
       - "DB_HOST=${DB_HOST}"
       - "SERVICE_NAME='post_service'"
       - "MEILISEARCH_KEY=${MEILISEARCH_KEY}"
+      - "MEDIA_KEY=${MEDIA_KEY}"
     volumes:
       - ./services/post-service:/service
       - /app/venv/
@@ -238,13 +255,13 @@ services:
 #      - internal
 #        environment:
 #         - "PYTHONPATH=."
-  #      - DATABASE_URL=${AUTH_DB_URL}
-  #      - SERVICE_PORT=${AUTH_PORT}
-  #      - DB_USER=${DB_USER}
-  #      - DB_PASSWORD=${DB_PASSWORD}
-  #      - DB_PORT=${DB_PORT}
-  #      - DB_HOST=${DB_HOST}
-  #      - SERVICE_NAME="view_service"
+#        - DATABASE_URL=${AUTH_DB_URL}
+#        - SERVICE_PORT=${AUTH_PORT}
+#        - DB_USER=${DB_USER}
+#        - DB_PASSWORD=${DB_PASSWORD}
+#        - DB_PORT=${DB_PORT}
+#        - DB_HOST=${DB_HOST}
+#        - SERVICE_NAME="view_service"
 #    build: ./services/view-service
 #    depends_on:
 #      db:
@@ -268,6 +285,7 @@ services:
       - "DB_PORT=${DB_PORT}"
       - "DB_HOST=${DB_HOST}"
       - "SERVICE_NAME='user_service'"
+      - "MEDIA_KEY=${MEDIA_KEY}"
     volumes:
       - ./services/user-service:/service
       - /app/venv/
