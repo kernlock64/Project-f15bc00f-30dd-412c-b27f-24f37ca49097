@@ -4,3 +4,4 @@ alembic
 sqlalchemy
 asyncpg
 httpx
+aio_pika==9.6.1

@@ -1,5 +1,5 @@
 import uuid
-
+import json
 from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 from starlette.responses import StreamingResponse
@@ -11,6 +11,25 @@ import jwt
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import *
 import os
+import aio_pika
+import asyncio
+
+
+class RabbitMQGateway:
+
+    def __init__(self):
+        self.connection = None
+        self.channel = None
+        self.exchange = None
+
+    async def connect(self):
+        self.connection = await aio_pika.connect_robust("amqp://guest:guest@127.0.0.1/")
+        self.channel = self.connection.channel
+
+    async def close(self):
+        if self.connection:
+            await self.connection.close()
+
 
 from httpx import Limits, AsyncClient, HTTPError
 
@@ -32,24 +51,50 @@ async def lifespan(cl: FastAPI):
     cl.state.http_client = client
     factory = get_async_session()
     app.state.db = factory
+    rabbit = RabbitMQGateway()
+    await rabbit.connect()
+    app.state.rabbit = rabbit.channel
     try:
         yield
     finally:
         await client.aclose()
         await engine.dispose()
-
-
-async def get_httpx(request: Request) -> httpx.AsyncClient:
-    return request.app.state.http_client
+        await rabbit.close()
 
 
 app = FastAPI(lifespan=lifespan)
 
 
+async def publish(rabbit: RabbitMQGateway, data: dict, routing_key=None):
+    channel = rabbit.channel
+
+    exchange = await channel.declare_exchange(
+        os.getenv("PUB"),
+        aio_pika.ExchangeType.FANOUT,
+        durable=True
+    )
+
+    message_body = json.dumps(data).encode()
+    message = aio_pika.Message(
+        body=message_body,
+        content_type="application/json",
+        delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+    )
+    if not routing_key:
+        await exchange.publish(message, routing_key="")
+
+    await exchange.publish(message, routing_key=routing_key)
+
+async def get_httpx() -> httpx.AsyncClient:
+    return app.state.http_client
+
 async def get_db():
     factory = app.state.db
     async with factory() as session:
         yield session
+
+async def on_operation():
+    pass
 
 
 ROUTES = {

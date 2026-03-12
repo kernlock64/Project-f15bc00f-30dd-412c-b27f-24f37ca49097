@@ -21,3 +21,4 @@ typing_extensions==4.15.0
 uvicorn==0.40.0
 PyJWT==2.11.0
 python-multipart==0.0.22
+aio_pika==9.6.1

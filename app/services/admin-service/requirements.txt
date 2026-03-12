@@ -2,3 +2,4 @@ fastapi
 uvicorn[standard]
 httpx
 alembic
+aio_pika==9.6.1

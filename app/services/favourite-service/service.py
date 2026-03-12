@@ -2,6 +2,8 @@ from fastapi import FastAPI, Depends, Request, Form
 import httpx
 from sqlalchemy import *
 import uuid
+import json
+import os
 
 from httpx import Limits, AsyncClient, HTTPError
 
@@ -10,6 +12,25 @@ from model import FavouriteDB
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from expiringdict import ExpiringDict
+
+import asyncio
+import aio_pika
+
+class RabbitMQGateway:
+
+    def __init__(self):
+        self.connection = None
+        self.channel = None
+        self.exchange = None
+
+    async def connect(self):
+        self.connection = await aio_pika.connect_robust("amqp://guest:guest@127.0.0.1/")
+        self.channel = self.connection.channel
+
+    async def close(self):
+        if self.connection:
+            await self.connection.close()
+
 
 limits = Limits(
     max_connections=700,
@@ -36,6 +57,26 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 
 app = FastAPI(lifespan=lifespan)
 
+
+async def publish(rabbit: RabbitMQGateway, data: dict, routing_key=None):
+    channel = rabbit.channel
+
+    exchange = await channel.declare_exchange(
+        os.getenv("PUB"),
+        aio_pika.ExchangeType.FANOUT,
+        durable=True
+    )
+
+    message_body = json.dumps(data).encode()
+    message = aio_pika.Message(
+        body=message_body,
+        content_type="application/json",
+        delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+    )
+    if not routing_key:
+        await exchange.publish(message, routing_key="")
+
+    await exchange.publish(message, routing_key=routing_key)
 
 async def get_db():
     factory = get_async_session()
@@ -138,6 +179,9 @@ async def add_favourite(
         db: AsyncSession,
         client: AsyncClient,
 ):
+
+# Remake all requests to post_service\
+
     try:
         c = cache.get(post_id)
         if not c:
