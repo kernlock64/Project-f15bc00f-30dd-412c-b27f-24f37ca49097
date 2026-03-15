@@ -24,42 +24,25 @@ class RabbitMQGateway:
         if self.connection:
             await self.connection.close()
 
-
-async def publish(rabbit: RabbitMQGateway, data: dict, routing_key=None):
-    channel = rabbit.channel
-
-    exchange = await channel.declare_exchange(
-        os.getenv("PUB"),
-        aio_pika.ExchangeType.FANOUT,
-        durable=True
-    )
-
-    message_body = json.dumps(data).encode()
-    message = aio_pika.Message(
-        body=message_body,
-        content_type="application/json",
-        delivery_mode=aio_pika.DeliveryMode.PERSISTENT
-    )
-    if not routing_key:
-        await exchange.publish(message, routing_key="")
-
-    await exchange.publish(message, routing_key=routing_key)
+MEDIA_KEY = os.getenv("MEDIA_KEY")
 
 limits = Limits(
-    max_connections=700,
-    max_keepalive_connections=50,
+    max_connections=1000,
+    max_keepalive_connections=100,
 )
-
-MEDIA_KEY = os.getenv("MEDIA_KEY")
 
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
     client = httpx.AsyncClient(limits=limits, timeout=5)
     cl.state.http_client = client
+    rabbit = RabbitMQGateway()
+    await rabbit.connect()
+    app.state.rabbit = rabbit.channel
     try:
         yield
     finally:
         await client.aclose()
+        await rabbit.close()
 
 
 async def get_httpx(request: Request) -> httpx.AsyncClient:

@@ -12,6 +12,7 @@ from model import CustomersDB, ProdDB
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 import aio_pika
+from aio_pika import ExchangeType
 import asyncio
 
 class RabbitMQGateway:
@@ -29,27 +30,6 @@ class RabbitMQGateway:
         if self.connection:
             await self.connection.close()
 
-
-async def publish(rabbit: RabbitMQGateway, data: dict, routing_key=None):
-    channel = rabbit.channel
-
-    exchange = await channel.declare_exchange(
-        os.getenv("PUB"),
-        aio_pika.ExchangeType.FANOUT,
-        durable=True
-    )
-
-    message_body = json.dumps(data).encode()
-    message = aio_pika.Message(
-        body=message_body,
-        content_type="application/json",
-        delivery_mode=aio_pika.DeliveryMode.PERSISTENT
-    )
-    if not routing_key:
-        await exchange.publish(message, routing_key="")
-
-    await exchange.publish(message, routing_key=routing_key)
-
 MEDIA_KEY = os.getenv("MEDIA_KEY")
 
 limits = Limits(
@@ -64,12 +44,15 @@ async def lifespan(cl: FastAPI):
     cl.state.http_client = client
     factory = get_async_session()
     app.state.db = factory
+    rabbit = RabbitMQGateway()
+    await rabbit.connect()
+    app.state.rabbit = rabbit.channel
     try:
         yield
     finally:
         await client.aclose()
         await engine.dispose()
-
+        await rabbit.close()
 
 async def get_httpx(request: Request) -> httpx.AsyncClient:
     return request.app.state.http_client
@@ -82,6 +65,81 @@ async def get_db():
     factory = app.state.db
     async with factory() as session:
         yield session
+
+
+async def delete_user(
+        uid: str,
+        role: str,
+        eng,
+):
+
+    cls = CustomersDB if role == "1" else ProdDB
+
+    async with eng() as db:
+
+        users = await db.execute(select(cls).where(cls.id == uid))
+        user = users.scalar_one_or_none()
+
+        await db.delete(user)
+        await db.commit()
+    return {
+        "status": "True",
+    }
+
+async def change_email(
+        uid: str,
+        role: str,
+        eng,
+        changed: str
+):
+    async with eng() as db:
+        cls = CustomersDB if role == "1" else ProdDB
+        users = await db.execute(select(cls).where(cls.id == uid))
+        user = users.scalar_one_or_none()
+
+        user.email = changed
+        await db.commit()
+
+    return {
+        "status": "True",
+    }
+
+
+async def listen_deletion(channel):
+    exchange = await channel.declare_exchange("v1.exchange.deletion", ExchangeType.FANOUT)
+    queue = await channel.declare_queue(exclusive=True)
+
+    queue.bind(exchange)
+
+    async with queue.iterator() as queue_iter:
+        async for message in queue_iter:
+            async with message.process():
+                data = json.loads(message.body.decode())
+                uid = data["X-User-Id"]
+                role = data["X-Role"]
+
+                await delete_user(uid, role, app.state.db)
+
+async def listen_changes(channel):
+    queue = await channel.declare_queue("v1.queue.changes")
+    async with queue.iterator() as queue_iter:
+        async for message in queue_iter:
+            async with message.process():
+                data = json.loads(message.body.decode())
+                uid = data["X-User-Id"]
+                role = data["X-Role"]
+                value = data["X-Changed-Value"]
+
+                await change_email(uid, role, app.state.db, value)
+
+
+async def main(rabbit: RabbitMQGateway):
+    channel = rabbit.channel
+
+    await asyncio.gather(
+        listen_deletion(channel),
+        listen_changes(channel)
+    )
 
 
 @app.get("/users/get-user")
@@ -190,44 +248,6 @@ async def add_user(
         }
 
 
-@app.post("/users/delete-user")
-async def delete_user(
-        request: Request,
-        db: AsyncSession = Depends(get_db),
-        client: AsyncClient = Depends(get_httpx),
-):
-    uid = request.headers.get("X-User-Id")
-    role = request.headers.get("X-Role")
-
-    res1 = await client.post(f"http://favourite-service:5005/favourites/deletion", headers=request.headers)
-
-    if res1.json()["status"] != "True":
-        return {
-            "status": "False",
-            "message": "Error deleting user",
-        }
-    else:
-        if role == "2":
-            res2 = await client.post(f"http://post-service:5003/posts/deletion", headers=request.headers)
-            if res2.json()["status"] != "True":
-                return {
-                    "status": "False",
-                    "message": "Error deleting user",
-                }
-        cls = CustomersDB if role == "1" else ProdDB
-        users = await db.execute(select(cls).where(cls.id == uid))
-        user = users.scalar_one_or_none()
-
-        await client.post(f"http://media-service:5001/media/delete-image/{user.image}",
-                          headers={"X-Key": MEDIA_KEY})
-
-        await db.delete(user)
-        await db.commit()
-        return {
-            "status": "True",
-        }
-
-
 @app.post("/users/change-userdata")
 async def change_userdata(
         request: Request,
@@ -284,3 +304,5 @@ async def change_avatar(
     return {
         "status": "True",
     }
+
+asyncio.run(main(app.state.rabbit))

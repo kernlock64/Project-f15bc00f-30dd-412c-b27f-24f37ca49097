@@ -3,7 +3,6 @@ import httpx
 from sqlalchemy import *
 import uuid
 import json
-import os
 
 from httpx import Limits, AsyncClient, HTTPError
 
@@ -15,6 +14,7 @@ from expiringdict import ExpiringDict
 
 import asyncio
 import aio_pika
+from aio_pika import ExchangeType
 
 class RabbitMQGateway:
 
@@ -44,11 +44,55 @@ cache = ExpiringDict(max_len=100, max_age_seconds=180)
 async def lifespan(cl: FastAPI):
     client = httpx.AsyncClient(limits=limits, timeout=5)
     cl.state.http_client = client
+    factory = get_async_session()
+    app.state.db = factory
+    rabbit = RabbitMQGateway()
+    await rabbit.connect()
+    app.state.rabbit = rabbit.channel
     try:
         yield
     finally:
         await client.aclose()
         await engine.dispose()
+        await rabbit.close()
+
+
+async def delete_user(
+        uid: str,
+        eng,
+):
+    cls = FavouriteDB
+
+    async with eng() as db:
+        users = await db.execute(select(cls).where(cls.id == uid))
+        user = users.scalar_one_or_none()
+
+        await db.delete(user)
+        await db.commit()
+    return {
+        "status": "True",
+    }
+
+
+async def listen_deletion(channel):
+    exchange = await channel.declare_exchange("v1.exchange.deletion", ExchangeType.FANOUT)
+    queue = await channel.declare_queue(exclusive=True)
+
+    queue.bind(exchange)
+
+    async with queue.iterator() as queue_iter:
+        async for message in queue_iter:
+            async with message.process():
+                data = json.loads(message.body.decode())
+                uid = data["X-User-Id"]
+                await delete_user(uid, app.state.db)
+
+async def main(rabbit: RabbitMQGateway):
+    channel = rabbit.channel
+
+    await asyncio.gather(
+        listen_deletion(channel),
+    )
 
 
 async def get_httpx(request: Request) -> httpx.AsyncClient:
@@ -56,27 +100,6 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 
 
 app = FastAPI(lifespan=lifespan)
-
-
-async def publish(rabbit: RabbitMQGateway, data: dict, routing_key=None):
-    channel = rabbit.channel
-
-    exchange = await channel.declare_exchange(
-        os.getenv("PUB"),
-        aio_pika.ExchangeType.FANOUT,
-        durable=True
-    )
-
-    message_body = json.dumps(data).encode()
-    message = aio_pika.Message(
-        body=message_body,
-        content_type="application/json",
-        delivery_mode=aio_pika.DeliveryMode.PERSISTENT
-    )
-    if not routing_key:
-        await exchange.publish(message, routing_key="")
-
-    await exchange.publish(message, routing_key=routing_key)
 
 async def get_db():
     factory = get_async_session()
@@ -220,3 +243,5 @@ async def delete_favourite(
     except HTTPError as e:
         return {"status": "False",
                 "message": str(e), }
+
+asyncio.run(main(app.state.rabbit))

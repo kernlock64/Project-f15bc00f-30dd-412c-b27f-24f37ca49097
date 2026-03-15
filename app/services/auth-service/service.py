@@ -14,7 +14,6 @@ import os
 import aio_pika
 import asyncio
 
-
 class RabbitMQGateway:
 
     def __init__(self):
@@ -65,11 +64,11 @@ async def lifespan(cl: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-async def publish(rabbit: RabbitMQGateway, data: dict, routing_key=None):
+async def publish(rabbit: RabbitMQGateway, data: dict, exchange_name, routing_key=None):
     channel = rabbit.channel
 
     exchange = await channel.declare_exchange(
-        os.getenv("PUB"),
+        exchange_name,
         aio_pika.ExchangeType.FANOUT,
         durable=True
     )
@@ -85,13 +84,16 @@ async def publish(rabbit: RabbitMQGateway, data: dict, routing_key=None):
 
     await exchange.publish(message, routing_key=routing_key)
 
+
 async def get_httpx() -> httpx.AsyncClient:
     return app.state.http_client
+
 
 async def get_db():
     factory = app.state.db
     async with factory() as session:
         yield session
+
 
 async def on_operation():
     pass
@@ -433,11 +435,10 @@ async def registration(
         }
 
 
-async def deletion_task(uid,
-                        client: AsyncClient,
+async def deletion_task(uid, role
                         ):
     try:
-        await client.post("http://user-service:5004/users/delete-user", headers={"X-User-Id": str(uid)})
+        await publish(app.state.rabbit, {"X-User-Id": str(uid), "X-Role": str(role)}, "v1.exchange.deletion")
         return {"status": "True"}
     except HTTPError as err:
         return {
@@ -455,8 +456,9 @@ async def delete(
 ):
     try:
         uid = request.headers.get("X-User-Id")
+        role = request.headers.get("X-Role")
 
-        background_tasks.add_task(deletion_task, uid, client)
+        background_tasks.add_task(deletion_task, uid, role)
 
         await db.execute(
             update(TokenDB)
@@ -499,7 +501,6 @@ async def login(
         session: AsyncSession = Depends(get_db),
         password: str = Form(...),
         email: str = Form(...),
-        client: AsyncClient = Depends(get_httpx),
 ):
     try:
 
@@ -527,7 +528,7 @@ async def login(
                     "message": "Заявка на рассмотрении. Благодарим за ожидание, в скором времени с вами свяжутся"
                 }
             if user.status == "REJECTED":
-                background_tasks.add_task(deletion_task, str(user.uid), client)
+                background_tasks.add_task(deletion_task, str(user.uid), str(user.role))
                 users = await session.execute(select(AuthDB).where(AuthDB.uid == str(user.uid)))
                 user = users.scalar_one_or_none()
                 user.token_version += 1
@@ -777,3 +778,5 @@ async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
         status_code=response.status_code,
         headers=response.headers,
     )
+
+asyncio.run(app.state.rabbit)
