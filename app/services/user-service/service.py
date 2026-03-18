@@ -12,7 +12,6 @@ from model import CustomersDB, ProdDB
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 import aio_pika
-from aio_pika import ExchangeType
 import asyncio
 
 class RabbitMQGateway:
@@ -23,8 +22,8 @@ class RabbitMQGateway:
         self.exchange = None
 
     async def connect(self):
-        self.connection = await aio_pika.connect_robust("amqp://guest:guest@127.0.0.1/")
-        self.channel = self.connection.channel
+        self.connection = await aio_pika.connect_robust(f"amqp://admin:{os.getenv("DB_PASSWORD")}@rabbitmq/")
+        self.channel = await self.connection.channel()
 
     async def close(self):
         if self.connection:
@@ -37,7 +36,6 @@ limits = Limits(
     max_keepalive_connections=100,
 )
 
-
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
     client = httpx.AsyncClient(limits=limits, timeout=5)
@@ -46,13 +44,31 @@ async def lifespan(cl: FastAPI):
     app.state.db = factory
     rabbit = RabbitMQGateway()
     await rabbit.connect()
-    app.state.rabbit = rabbit.channel
+
+    user_actions = await rabbit.channel.declare_exchange(
+        "v1.exchange.user_actions",
+        aio_pika.ExchangeType.DIRECT,
+        durable=True
+    )
+
+    deletion = await rabbit.channel.declare_queue("v1.queue.deletion")
+    await deletion.bind(exchange=user_actions, routing_key="v1.queue.deletion")
+
+    changes = await rabbit.channel.declare_queue("v1.queue.changes")
+    await changes.bind(exchange=user_actions, routing_key="v1.queue.changes")
+
+    app.state.d_queue = deletion
+    app.state.c_queue = changes
+
+    app.state.task = asyncio.create_task((main()))
+
     try:
         yield
     finally:
         await client.aclose()
         await engine.dispose()
         await rabbit.close()
+        app.state.task.cancel()
 
 async def get_httpx(request: Request) -> httpx.AsyncClient:
     return request.app.state.http_client
@@ -75,13 +91,23 @@ async def delete_user(
 
     cls = CustomersDB if role == "1" else ProdDB
 
+
     async with eng() as db:
 
         users = await db.execute(select(cls).where(cls.id == uid))
         user = users.scalar_one_or_none()
+        avatar = user.image
 
         await db.delete(user)
+
+
+        client = app.state.http_client
+
+        await client.delete(f"http://media-service:5001/media/delete-image/{avatar}",
+                                 headers={"X-Key": MEDIA_KEY})
+
         await db.commit()
+
     return {
         "status": "True",
     }
@@ -105,40 +131,38 @@ async def change_email(
     }
 
 
-async def listen_deletion(channel):
-    exchange = await channel.declare_exchange("v1.exchange.deletion", ExchangeType.FANOUT)
-    queue = await channel.declare_queue(exclusive=True)
+async def listen_deletion():
+    try:
+        async with app.state.d_queue.iterator() as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    data = json.loads(message.body.decode())
+                    uid = data["X-User-Id"]
+                    role = data["X-Role"]
 
-    queue.bind(exchange)
+                    await delete_user(uid, role, app.state.db)
+    except Exception as e:
+        print(e)
 
-    async with queue.iterator() as queue_iter:
-        async for message in queue_iter:
-            async with message.process():
-                data = json.loads(message.body.decode())
-                uid = data["X-User-Id"]
-                role = data["X-Role"]
+async def listen_changes():
+    try:
+        async with app.state.c_queue.iterator() as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    data = json.loads(message.body.decode())
+                    uid = data["X-User-Id"]
+                    role = data["X-Role"]
+                    value = data["X-Changed-Value"]
 
-                await delete_user(uid, role, app.state.db)
-
-async def listen_changes(channel):
-    queue = await channel.declare_queue("v1.queue.changes")
-    async with queue.iterator() as queue_iter:
-        async for message in queue_iter:
-            async with message.process():
-                data = json.loads(message.body.decode())
-                uid = data["X-User-Id"]
-                role = data["X-Role"]
-                value = data["X-Changed-Value"]
-
-                await change_email(uid, role, app.state.db, value)
+                    await change_email(uid, role, app.state.db, value)
+    except Exception as e:
+        print(e)
 
 
-async def main(rabbit: RabbitMQGateway):
-    channel = rabbit.channel
-
+async def main():
     await asyncio.gather(
-        listen_deletion(channel),
-        listen_changes(channel)
+        listen_deletion(),
+        listen_changes()
     )
 
 
@@ -234,11 +258,11 @@ async def add_user(
         }
     else:
         user = CustomersDB(id=uid, username=username, email=email, date_created=datetime.now(timezone.utc),
-                           image=str(filename + avatar.content_type.split("/")[1])) if role == "1" else ProdDB(
+                           image=str(filename + '.' + avatar.content_type.split("/")[1])) if role == "1" else ProdDB(
             name=username, id=uid, email=email,
             date_created=datetime.now(
                 timezone.utc),
-            image=str(filename + avatar.content_type.split("/")[1]),
+            image=str(filename + '.' + avatar.content_type.split("/")[1]),
             telephone=telephone, )
         db.add(user)
         await db.commit()
@@ -287,22 +311,25 @@ async def change_avatar(
 
     filename = await db.execute(select(cls.image).where(cls.id == uid))
 
-    content = await avatar.read()
+    async def read_file():
+        while chunk := await avatar.read(64 * 1024):
+            yield chunk
 
-    files = {
-        "avatar": (avatar.filename, content, avatar.content_type),
-    }
+    req = client.build_request(
+        method="POST",
+        url=f"http://media-service:5001/media/add-image/{filename}",
+        headers={"X-Key": MEDIA_KEY, "X-Name": filename},
+        content=read_file(),
+    )
 
-    resp = await client.post(f"http://media-service:5001/media/change-image/{filename}", files=files,
-                             headers={"X-Key": MEDIA_KEY})
-    if resp.json()["status"] != "True":
+    resp = await client.send(req, stream=True)
+
+    if resp.status_code != 200:
         return {
             "status": "False",
             "message": "Error adding image",
         }
-
-    return {
-        "status": "True",
-    }
-
-asyncio.run(main(app.state.rabbit))
+    else:
+        return {
+            "status": "True",
+        }

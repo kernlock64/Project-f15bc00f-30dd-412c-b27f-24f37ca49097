@@ -12,19 +12,19 @@ class RabbitMQGateway:
         self.exchange = None
 
     async def connect(self):
-        self.connection = await aio_pika.connect_robust("amqp://guest:guest@127.0.0.1/")
-        self.channel = self.connection.channel
+        self.connection = await aio_pika.connect_robust(f"amqp://admin:{os.getenv("DB_PASSWORD")}@rabbitmq/")
+        self.channel = await self.connection.channel()
 
     async def close(self):
         if self.connection:
             await self.connection.close()
 
 
-async def publish(rabbit: RabbitMQGateway, data: dict, routing_key=None):
+async def publish(rabbit: RabbitMQGateway, data: dict, exchange_name, routing_key=None):
     channel = rabbit.channel
 
     exchange = await channel.declare_exchange(
-        os.getenv("PUB"),
+        exchange_name,
         aio_pika.ExchangeType.FANOUT,
         durable=True
     )
@@ -33,11 +33,9 @@ async def publish(rabbit: RabbitMQGateway, data: dict, routing_key=None):
     message = aio_pika.Message(
         body=message_body,
         content_type="application/json",
-        delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
     )
-    if not routing_key:
-        await exchange.publish(message, routing_key="")
 
-    await exchange.publish(message, routing_key=routing_key)
+    await exchange.publish(message, routing_key=routing_key or "")
 
 app = FastAPI()

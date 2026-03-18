@@ -14,6 +14,7 @@ import os
 import aio_pika
 import asyncio
 
+
 class RabbitMQGateway:
 
     def __init__(self):
@@ -22,8 +23,8 @@ class RabbitMQGateway:
         self.exchange = None
 
     async def connect(self):
-        self.connection = await aio_pika.connect_robust("amqp://guest:guest@127.0.0.1/")
-        self.channel = self.connection.channel
+        self.connection = await aio_pika.connect_robust(f"amqp://admin:{os.getenv("DB_PASSWORD")}@rabbitmq/")
+        self.channel = await self.connection.channel()
 
     async def close(self):
         if self.connection:
@@ -52,7 +53,16 @@ async def lifespan(cl: FastAPI):
     app.state.db = factory
     rabbit = RabbitMQGateway()
     await rabbit.connect()
-    app.state.rabbit = rabbit.channel
+    app.state.rabbit = rabbit
+
+    user_actions = await rabbit.channel.declare_exchange(
+        "v1.exchange.user_actions",
+        aio_pika.ExchangeType.FANOUT,
+        durable=True
+    )
+
+    app.state.exchange = user_actions
+
     try:
         yield
     finally:
@@ -63,26 +73,26 @@ async def lifespan(cl: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-
-async def publish(rabbit: RabbitMQGateway, data: dict, exchange_name, routing_key=None):
-    channel = rabbit.channel
-
-    exchange = await channel.declare_exchange(
-        exchange_name,
-        aio_pika.ExchangeType.FANOUT,
-        durable=True
-    )
+async def publish(data: dict, routing_key):
+    exchange = app.state.exchange
 
     message_body = json.dumps(data).encode()
     message = aio_pika.Message(
         body=message_body,
         content_type="application/json",
-        delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
     )
-    if not routing_key:
-        await exchange.publish(message, routing_key="")
 
-    await exchange.publish(message, routing_key=routing_key)
+    if not routing_key:
+        return {
+            "status": "False",
+            "message": "Please enter valid route!",
+        }
+    await exchange.publish(message, routing_key=routing_key)\
+
+    return {
+        "status": "True",
+    }
 
 
 async def get_httpx() -> httpx.AsyncClient:
@@ -93,10 +103,6 @@ async def get_db():
     factory = app.state.db
     async with factory() as session:
         yield session
-
-
-async def on_operation():
-    pass
 
 
 ROUTES = {
@@ -438,7 +444,7 @@ async def registration(
 async def deletion_task(uid, role
                         ):
     try:
-        await publish(app.state.rabbit, {"X-User-Id": str(uid), "X-Role": str(role)}, "v1.exchange.deletion")
+        await publish({"X-User-Id": str(uid), "X-Role": str(role)}, routing_key="v1.queue.deletion")
         return {"status": "True"}
     except HTTPError as err:
         return {
@@ -624,6 +630,7 @@ async def change_email(
     try:
         headers = request.headers
         uid = headers.get("X-User-Id")
+        role = headers.get("X-Role")
 
         users = await session.execute(select(AuthDB).where(AuthDB.uid == uid))
         user = users.scalars().one_or_none()
@@ -635,6 +642,10 @@ async def change_email(
             }
 
         user.email = new_email
+
+        await publish({"X-User-Id": str(uid), "X-Role": str(role), "X-Changed-Value": new_email},
+                      routing_key="v1.queue.changes")
+
         await session.commit()
 
         return {
@@ -779,4 +790,5 @@ async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
         headers=response.headers,
     )
 
-asyncio.run(app.state.rabbit)
+
+# asyncio.run(app.state.rabbit)

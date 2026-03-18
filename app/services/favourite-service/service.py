@@ -3,6 +3,7 @@ import httpx
 from sqlalchemy import *
 import uuid
 import json
+import os
 
 from httpx import Limits, AsyncClient, HTTPError
 
@@ -14,23 +15,6 @@ from expiringdict import ExpiringDict
 
 import asyncio
 import aio_pika
-from aio_pika import ExchangeType
-
-class RabbitMQGateway:
-
-    def __init__(self):
-        self.connection = None
-        self.channel = None
-        self.exchange = None
-
-    async def connect(self):
-        self.connection = await aio_pika.connect_robust("amqp://guest:guest@127.0.0.1/")
-        self.channel = self.connection.channel
-
-    async def close(self):
-        if self.connection:
-            await self.connection.close()
-
 
 limits = Limits(
     max_connections=700,
@@ -40,6 +24,23 @@ limits = Limits(
 cache = ExpiringDict(max_len=100, max_age_seconds=180)
 
 
+class RabbitMQGateway:
+
+    def __init__(self):
+        self.connection = None
+        self.channel = None
+        self.exchange = None
+
+    async def connect(self):
+        self.connection = await aio_pika.connect_robust(f"amqp://admin:{os.getenv("DB_PASSWORD")}@rabbitmq/")
+        self.channel = await self.connection.channel()
+
+    async def close(self):
+        if self.connection:
+            await self.connection.close()
+
+MEDIA_KEY = os.getenv("MEDIA_KEY")
+
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
     client = httpx.AsyncClient(limits=limits, timeout=5)
@@ -48,52 +49,27 @@ async def lifespan(cl: FastAPI):
     app.state.db = factory
     rabbit = RabbitMQGateway()
     await rabbit.connect()
-    app.state.rabbit = rabbit.channel
+
+    user_actions = await rabbit.channel.declare_exchange(
+        "v1.exchange.user_actions",
+        aio_pika.ExchangeType.DIRECT,
+        durable=True
+    )
+
+    deletion = await rabbit.channel.declare_queue("v1.queue.deletion")
+    await deletion.bind(exchange=user_actions, routing_key="v1.queue.deletion")
+
+    app.state.d_queue = deletion
+
+    app.state.task = asyncio.create_task((main()))
+
     try:
         yield
     finally:
         await client.aclose()
         await engine.dispose()
         await rabbit.close()
-
-
-async def delete_user(
-        uid: str,
-        eng,
-):
-    cls = FavouriteDB
-
-    async with eng() as db:
-        users = await db.execute(select(cls).where(cls.id == uid))
-        user = users.scalar_one_or_none()
-
-        await db.delete(user)
-        await db.commit()
-    return {
-        "status": "True",
-    }
-
-
-async def listen_deletion(channel):
-    exchange = await channel.declare_exchange("v1.exchange.deletion", ExchangeType.FANOUT)
-    queue = await channel.declare_queue(exclusive=True)
-
-    queue.bind(exchange)
-
-    async with queue.iterator() as queue_iter:
-        async for message in queue_iter:
-            async with message.process():
-                data = json.loads(message.body.decode())
-                uid = data["X-User-Id"]
-                await delete_user(uid, app.state.db)
-
-async def main(rabbit: RabbitMQGateway):
-    channel = rabbit.channel
-
-    await asyncio.gather(
-        listen_deletion(channel),
-    )
-
+        app.state.task.cancel()
 
 async def get_httpx(request: Request) -> httpx.AsyncClient:
     return request.app.state.http_client
@@ -101,10 +77,43 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 
 app = FastAPI(lifespan=lifespan)
 
+
 async def get_db():
-    factory = get_async_session()
+    factory = app.state.db
     async with factory() as session:
         yield session
+
+
+async def delete_user(
+        uid: str,
+        eng,
+):
+    cls = FavouriteDB
+    async with eng() as db:
+        await db.execute(delete(cls).where(cls.id == uid))
+        await db.commit()
+    return {
+        "status": "True",
+    }
+
+
+async def listen_deletion():
+    try:
+        async with app.state.d_queue.iterator() as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    data = json.loads(message.body.decode())
+                    uid = data["X-User-Id"]
+
+                    await delete_user(uid, app.state.db)
+    except Exception as e:
+        print(e)
+
+
+async def main():
+    await asyncio.gather(
+        listen_deletion(),
+    )
 
 
 @app.post("/favourites/changes")
@@ -155,24 +164,6 @@ async def is_favourite(
                 "message": str(e), }
 
 
-@app.post("/favourites/deletion")
-async def favourite_deletion(
-        request: Request,
-        db: AsyncSession = Depends(get_db),
-):
-    try:
-        await db.execute(delete(FavouriteDB).where(FavouriteDB.uid == str(request.headers["X-User-Id"])))
-        await db.commit()
-        return {
-            "status": "True",
-        }
-    except HTTPError as e:
-        return {
-            "status": "False",
-            "message": str(e),
-        }
-
-
 @app.post("/favourites/{post_id}")
 async def favourite_manager(
         request: Request,
@@ -181,10 +172,9 @@ async def favourite_manager(
         client: AsyncClient = Depends(get_httpx),
 ):
     try:
-
         uid = request.headers["X-User-Id"]
         res = await db.execute(
-            select(FavouriteDB).where(FavouriteDB.uid == str(uid) and FavouriteDB.pid == str(post_id)))
+            select(FavouriteDB).where(FavouriteDB.uid == str(uid), FavouriteDB.pid == str(post_id)))
         res = res.scalar_one_or_none()
         if not res:
             return await add_favourite(post_id, uid, db, client)
@@ -203,7 +193,7 @@ async def add_favourite(
         client: AsyncClient,
 ):
 
-# Remake all requests to post_service\
+# Remake all requests to post_service
 
     try:
         c = cache.get(post_id)
@@ -236,12 +226,10 @@ async def delete_favourite(
 ):
     try:
         await db.execute(
-            delete(FavouriteDB).where(FavouriteDB.uid == str(user_id) and FavouriteDB.pid == str(post_id)))
+            delete(FavouriteDB).where(FavouriteDB.uid == str(user_id), FavouriteDB.pid == str(post_id)))
         await db.commit()
         return {"status": "True"}
 
     except HTTPError as e:
         return {"status": "False",
                 "message": str(e), }
-
-asyncio.run(main(app.state.rabbit))

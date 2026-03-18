@@ -4,25 +4,6 @@ from starlette.responses import StreamingResponse
 from httpx import Limits, AsyncClient
 from contextlib import asynccontextmanager
 import os
-import json
-
-import aio_pika
-import asyncio
-
-class RabbitMQGateway:
-
-    def __init__(self):
-        self.connection = None
-        self.channel = None
-        self.exchange = None
-
-    async def connect(self):
-        self.connection = await aio_pika.connect_robust("amqp://guest:guest@127.0.0.1/")
-        self.channel = self.connection.channel
-
-    async def close(self):
-        if self.connection:
-            await self.connection.close()
 
 MEDIA_KEY = os.getenv("MEDIA_KEY")
 
@@ -35,14 +16,10 @@ limits = Limits(
 async def lifespan(cl: FastAPI):
     client = httpx.AsyncClient(limits=limits, timeout=5)
     cl.state.http_client = client
-    rabbit = RabbitMQGateway()
-    await rabbit.connect()
-    app.state.rabbit = rabbit.channel
     try:
         yield
     finally:
         await client.aclose()
-        await rabbit.close()
 
 
 async def get_httpx(request: Request) -> httpx.AsyncClient:
@@ -115,9 +92,10 @@ async def add_image(
 @app.delete("/media/delete-image/{filename}")
 async def delete_image(
         filename: str, request: Request,
-        directory: bool = False,
         client: AsyncClient = Depends(get_httpx)):
     try:
+
+        directory = request.headers.get("X-Directory")
 
         key = request.headers.get("X-Key")
         if key != MEDIA_KEY:
@@ -176,3 +154,4 @@ async def change_image(
             "status": "False",
             "message": str(e),
         }
+

@@ -12,7 +12,8 @@ class PostDB(Base):
     author_id: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[Text] = mapped_column(Text, nullable=False)
     description: Mapped[Text] = mapped_column(Text, nullable=False)
-    images_array: Mapped[List[int]] = mapped_column(JSON, nullable=False)
+    images_array: Mapped[List[int]] = mapped_column(JSON)
+    directory_name: Mapped[str] = mapped_column(Text, nullable=False)
     posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 class CategoryDB(Base):

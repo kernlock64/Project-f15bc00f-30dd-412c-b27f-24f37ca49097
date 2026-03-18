@@ -86,6 +86,8 @@ services:
       RABBITMQ_DEFAULT_USER: "admin"
       RABBITMQ_DEFAULT_PASS: "${DB_PASSWORD}"
     restart: always
+    networks:
+      - internal
 
   meilisearch:
     image: getmeili/meilisearch:latest

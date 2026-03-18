@@ -1,20 +1,20 @@
-from fastapi import FastAPI, Depends, Request, Form
-import httpx
-from sqlalchemy import *
+import os
 import uuid
 import json
 import random
 
-from httpx import Limits, AsyncClient, HTTPError
-
+from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body
+import httpx
+from datetime import datetime, timezone
+from sqlalchemy import *
+from httpx import Limits, AsyncClient
 from db_init import get_async_session, engine
-from model import PostDB
+from model import PostDB, CategoryDB
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
-
-import asyncio
 import aio_pika
-from aio_pika import ExchangeType
+import asyncio
+
 
 class RabbitMQGateway:
 
@@ -24,19 +24,19 @@ class RabbitMQGateway:
         self.exchange = None
 
     async def connect(self):
-        self.connection = await aio_pika.connect_robust("amqp://guest:guest@127.0.0.1/")
-        self.channel = self.connection.channel
+        self.connection = await aio_pika.connect_robust(f"amqp://admin:{os.getenv("DB_PASSWORD")}@rabbitmq/")
+        self.channel = await self.connection.channel()
 
     async def close(self):
         if self.connection:
             await self.connection.close()
 
+MEDIA_KEY = os.getenv("MEDIA_KEY")
 
 limits = Limits(
     max_connections=1000,
     max_keepalive_connections=100,
 )
-
 
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
@@ -46,37 +46,39 @@ async def lifespan(cl: FastAPI):
     app.state.db = factory
     rabbit = RabbitMQGateway()
     await rabbit.connect()
-    app.state.rabbit = rabbit.channel
+
+    user_actions = await rabbit.channel.declare_exchange(
+        "v1.exchange.user_actions",
+        aio_pika.ExchangeType.DIRECT,
+        durable=True
+    )
+
+    deletion = await rabbit.channel.declare_queue("v1.queue.deletion")
+    await deletion.bind(exchange=user_actions, routing_key="v1.queue.deletion")
+
+    app.state.d_queue = deletion
+
+    app.state.task = asyncio.create_task((main()))
+
     try:
         yield
     finally:
         await client.aclose()
         await engine.dispose()
         await rabbit.close()
+        app.state.task.cancel()
+
+async def get_httpx(request: Request) -> httpx.AsyncClient:
+    return request.app.state.http_client
 
 
 app = FastAPI(lifespan=lifespan)
 
 
-async def publish(rabbit: RabbitMQGateway, data: dict, exchange_name, routing_key=None):
-    channel = rabbit.channel
-
-    exchange = await channel.declare_exchange(
-        exchange_name,
-        aio_pika.ExchangeType.FANOUT,
-        durable=True
-    )
-
-    message_body = json.dumps(data).encode()
-    message = aio_pika.Message(
-        body=message_body,
-        content_type="application/json",
-        delivery_mode=aio_pika.DeliveryMode.PERSISTENT
-    )
-    if not routing_key:
-        await exchange.publish(message, routing_key="")
-
-    await exchange.publish(message, routing_key=routing_key)
+async def get_db():
+    factory = app.state.db
+    async with factory() as session:
+        yield session
 
 
 async def delete_user(
@@ -84,47 +86,37 @@ async def delete_user(
         eng,
 ):
     cls = PostDB
-
     async with eng() as db:
-        users = await db.execute(select(cls).where(cls.id == uid))
-        user = users.scalar_one_or_none()
-
-        await db.delete(user)
+        db_r = await db.execute(select(cls.directory_name).where(cls.id == uid))
+        image_ids = await db_r.scalars().all()
+        await db.execute(delete(cls).where(cls.id == uid))
+        client = app.state.http_client
+        for i in image_ids:
+            await client.delete(f"http://media-service:5001/media/delete-image/{i}",
+                                headers={"X-Key": MEDIA_KEY, "X-Directory": i})
         await db.commit()
     return {
         "status": "True",
     }
 
 
-async def listen_deletion(channel):
-    exchange = await channel.declare_exchange("v1.exchange.deletion", ExchangeType.FANOUT)
-    queue = await channel.declare_queue(exclusive=True)
+async def listen_deletion():
+    try:
+        async with app.state.d_queue.iterator() as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    data = json.loads(message.body.decode())
+                    uid = data["X-User-Id"]
 
-    queue.bind(exchange)
+                    await delete_user(uid, app.state.db)
+    except Exception as e:
+        print(e)
 
-    async with queue.iterator() as queue_iter:
-        async for message in queue_iter:
-            async with message.process():
-                data = json.loads(message.body.decode())
-                uid = data["X-User-Id"]
-                await delete_user(uid, app.state.db)
 
-async def main(rabbit: RabbitMQGateway):
-    channel = rabbit.channel
-
+async def main():
     await asyncio.gather(
-        listen_deletion(channel),
+        listen_deletion(),
     )
-
-
-async def get_httpx(request: Request) -> httpx.AsyncClient:
-    return request.app.state.http_client
-
-
-async def get_db():
-    factory = get_async_session()
-    async with factory() as session:
-        yield session
 
 '''TEST DATA/TEST ENDPOINTS'''
 
@@ -148,4 +140,4 @@ async def get_post():
 
 '''TEST DATA/TEST ENDPOINTS'''
 
-asyncio.run(main(app.state.rabbit))
+# asyncio.run(main(app.state.rabbit))
