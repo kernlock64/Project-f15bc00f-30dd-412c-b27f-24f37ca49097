@@ -57,7 +57,7 @@ async def lifespan(cl: FastAPI):
 
     user_actions = await rabbit.channel.declare_exchange(
         "v1.exchange.user_actions",
-        aio_pika.ExchangeType.FANOUT,
+        aio_pika.ExchangeType.DIRECT,
         durable=True
     )
 
