@@ -1,13 +1,15 @@
 import uuid
 import json
-from fastapi import FastAPI, File, UploadFile, Depends, Request, Response, Form, status, BackgroundTasks
+from fastapi import FastAPI, Depends, Request, Response, Form, status, BackgroundTasks
 from fastapi.responses import JSONResponse
+from phonenumbers import NumberParseException
 from starlette.responses import StreamingResponse
 from starlette.datastructures import MutableHeaders
 import httpx
 import hashlib
 import secrets
 import jwt
+import phonenumbers
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import *
 import os
@@ -61,7 +63,37 @@ async def lifespan(cl: FastAPI):
         durable=True
     )
 
+    iternal_user_validation = await rabbit.channel.declare_exchange(
+        "iternal_user_validation",
+        aio_pika.ExchangeType.DIRECT,
+        durable=True
+    )
+
+    iternal_user_validation_queue = await rabbit.channel.declare_queue(
+        "check_user_actions",
+        durable=True
+    )
+
+    await iternal_user_validation_queue.bind(
+        iternal_user_validation,
+        routing_key="iternal_validation",
+    )
+
+    await rabbit.channel.declare_queue(
+        "wait_for_user_confirmation",
+        durable=True,
+        arguments={
+            "x-message-ttl": 25200000,
+            "x-dead-letter-exchange": "iternal_user_validation",
+            "x-dead-letter-routing-key": "iternal_validation"
+        }
+    )
+
+    app.state.iternal_user_validation = iternal_user_validation
     app.state.exchange = user_actions
+    app.state.default_exchange = rabbit.channel.default_exchange
+
+    app.state.task = asyncio.create_task((main()))
 
     try:
         yield
@@ -69,9 +101,11 @@ async def lifespan(cl: FastAPI):
         await client.aclose()
         await engine.dispose()
         await rabbit.close()
+        app.state.task.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
+
 
 async def publish(data: dict, routing_key):
     exchange = app.state.exchange
@@ -88,11 +122,58 @@ async def publish(data: dict, routing_key):
             "status": "False",
             "message": "Please enter valid route!",
         }
-    await exchange.publish(message, routing_key=routing_key)\
+    await exchange.publish(message, routing_key=routing_key)
 
     return {
         "status": "True",
     }
+
+
+async def iternal_publish(uid):
+    exchange = app.state.default_exchange
+    routing_key = "wait_for_user_confirmation"
+
+    message_body = json.dumps({"X-User-Id": uid}).encode()
+    message = aio_pika.Message(
+        body=message_body,
+        content_type="application/json",
+        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+    )
+
+    await exchange.publish(message, routing_key=routing_key)
+
+    return {
+        "status": "True",
+    }
+
+
+async def user_check(uid, eng):
+    async with eng() as db:
+        users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
+        user = users.scalar_one_or_none()
+
+        if user.status == "PENDING":
+            await db.delete(user)
+        await db.commit()
+
+
+async def listen_check():
+    try:
+        async with app.state.iternal_user_validation.iterator() as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    data = json.loads(message.body.decode())
+                    uid = data["X-User-Id"]
+
+                    await user_check(uid, app.state.db)
+    except Exception as e:
+        print(e)
+
+
+async def main():
+    await asyncio.gather(
+        listen_check(),
+    )
 
 
 async def get_httpx() -> httpx.AsyncClient:
@@ -113,10 +194,14 @@ ROUTES = {
     "admin": "http://admin-service:5006",
 }
 
+ROUTES_NA = {
+    "posts": "http://post-service:5003",
+}
+
 
 @app.middleware("http")
 async def proxy(request: Request, call_next):
-    if request.url.path in {"/registration", "/login", "/refresh", "/forgot-password"}:
+    if request.url.path in {"/registration", "/login", "/refresh", "/forgot-password", "/user-confirm"}:
         return await call_next(request)
 
     token = request.cookies.get("access_t")
@@ -125,13 +210,15 @@ async def proxy(request: Request, call_next):
     public_key = os.getenv("PUBLIC_KEY").replace("\\n", "\n")
 
     if not token:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "status": "False",
-                "message": "Unauthorized!",
-            }
-        )
+        headers = MutableHeaders(scope=request.scope)
+
+        headers['X-User-Id'] = "-1"
+        headers['X-Role'] = "-1"
+
+        if hasattr(request, "_headers"):
+            delattr(request, "_headers")
+        resp = await call_next(request)
+        return resp
 
     try:
         payload = jwt.decode(token, public_key, algorithms="ES256")
@@ -202,6 +289,15 @@ async def proxy(request: Request, call_next):
                 }
             )
 
+        if request.url.path != "/change-password":
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "status": "False",
+                    "message": "Unauthorized!",
+                }
+            )
+
         headers = MutableHeaders(scope=request.scope)
 
         headers['X-User-Id'] = u.uid
@@ -218,6 +314,66 @@ async def proxy(request: Request, call_next):
         "status": "False",
         "message": "Unexpected error!"
     }
+
+
+@app.post("/user-confirm")
+async def user_confirm(
+        token: str,
+        db: AsyncSession = Depends(get_db),
+        client: AsyncClient = Depends(get_httpx),
+):
+
+    public_key = os.getenv("PUBLIC_KEY").replace("\\n", "\n")
+
+    try:
+        payload = jwt.decode(token, public_key, algorithms="ES256")
+
+    except jwt.InvalidSignatureError:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "status": "False",
+                "message": "Ссылка недействительна или была просрочена!",
+            }
+        )
+
+    except jwt.ExpiredSignatureError:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "status": "False",
+                "message": "Ссылка недействительна или была просрочена!",
+            }
+        )
+
+    uid = payload.get("i")
+    users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
+    user = users.scalar_one_or_none()
+    telephone = payload.get("t")
+
+    if user.status == "ACTIVE":
+        return JSONResponse({
+            "status": "False",
+            "message": "Ссылка уже была активирована!"
+        })
+
+    role = payload.get("r")
+    user.status = "ACTIVE" if role == 1 else "VERIFIED"
+    await db.commit()
+
+    await client.post("http://user-service:5004/users/add-user", data={
+        "username": user.username,
+        "email": user.email,
+        "role": user.role,
+        "uid": user.uid,
+        "telephone": telephone,
+    })
+    await client.post("http://mail-service:5002/mail/on-registration", json={
+        "username": user.username,
+    },
+                      headers={"Content-Type": "application/json"})
+
+    return {"status": "True"}
 
 
 async def check_data(password, email, username, session: AsyncSession):
@@ -329,8 +485,6 @@ async def logout(
 
 @app.post("/registration")
 async def registration(
-        response: Response,
-        file: UploadFile = File(...),
         session: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
         username: str = Form(...),
@@ -344,14 +498,21 @@ async def registration(
             return {"status": "False",
                     "message": "Пожалуйста, предоставьте телефонный номер!"}
 
+        if telephone:
+            try:
+                parsed = phonenumbers.parse(telephone, "RU")
+
+                if not phonenumbers.is_valid_number(parsed):
+                    return {"status": "False",
+                            "message": "Некорректный формат телефонного номера!"}
+
+                telephone = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+
+            except NumberParseException:
+                return {"status": "False",
+                        "message": "Некорректный формат телефонного номера!"}
+
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
-
-        content = await file.read()
-
-        files = {
-            "avatar": (file.filename, content, file.content_type),
-        }
-
         check = await check_data(password, email, username, session=session)
 
         if check["status"] == "False":
@@ -359,7 +520,7 @@ async def registration(
 
         user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(tz=timezone.utc),
                       uid=str(uuid.uuid4()),
-                      role=role, status="ACTIVE", token_version=1, username=username) if role == 1 else AuthDB(
+                      role=role, status="PENDING", token_version=1, username=username) if role == 1 else AuthDB(
             email=email,
             hashed_password=hashed_password,
             date=datetime.now(
@@ -370,68 +531,51 @@ async def registration(
             username=username, )
         session.add(user)
 
-        payload = {
-            "role": role,
-            "uid": user.uid,
-            "jit": str(uuid.uuid4()),
-            "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
-            "tov": user.token_version,
-            "thm": "access"
-        }
-
-        data = {
-            "username": username,
-            "email": email,
-            "role": str(role),
-            "uid": user.uid,
-            "telephone": telephone,
-        }
-
         templ_data = {
             "email_to": email,
             "username": username,
         }
 
-        resp = await client.post("http://user-service:5004/users/add-user", data=data, files=files)
-        if resp.status_code != 200:
-            await session.rollback()
-            return {"status": "False", "message": str(resp.json()["message"])}
+        await session.commit()
 
-        else:
-            await session.commit()
+        message = {
+            "status": "True",
+        }
 
-            if user.role == 2:
+        if user.role == 2:
 
-                resp = await client.post("http://mail-service:5002/mail/on-requesting-provider", json=templ_data,
-                                         headers={"Content-Type": "application/json"})
-                if resp.status_code != 200:
-                    await session.rollback()
-                    return {"status": "False", "message": str(resp.json()["message"])}
-
-                return {
-                    "status": "True",
-                    "message": "Ваша заявление принято на рассмотрение!"
-                }
-
-            resp = await client.post("http://mail-service:5002/mail/on-registration", json=templ_data,
+            resp = await client.post("http://mail-service:5002/mail/on-requesting-provider", json=templ_data,
                                      headers={"Content-Type": "application/json"})
             if resp.status_code != 200:
                 await session.rollback()
                 return {"status": "False", "message": str(resp.json()["message"])}
 
-            prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
+            message = {
+                "status": "True",
+                "message": "Ваша заявление принято на рассмотрение!"
+            }
 
-            access_t = jwt.encode(payload, prv_key, algorithm="ES256")
-            refreshment_t = str(secrets.token_urlsafe(64))
-            token = TokenDB(uid=user.uid, token=refreshment_t,
-                            expires_at=(datetime.now(tz=timezone.utc) + timedelta(days=30)), is_expired=False)
-            session.add(token)
-            await session.commit()
+        payload = {
+            "i": user.uid,
+            "t": telephone,
+            "exp": datetime.now(tz=timezone.utc) + timedelta(hours=7),
+            "r": role
+        }
 
-            response.set_cookie(key="refreshment_t", value=refreshment_t, httponly=True, secure=True)
-            response.set_cookie(key="access_t", value=access_t, secure=True, httponly=True)
+        prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
 
-            return {"status": "True"}
+        token = jwt.encode(payload, prv_key, algorithm="ES256")
+
+        template_data = {
+            "token": token,
+            "username": username,
+            "email_to": email,
+        }
+
+        await client.post("http://mail-service:5002/mail/on-confirmation-mail", json=template_data,
+                          headers={"Content-Type": "application/json"})
+
+        return message
 
 
     except HTTPError as err:
@@ -529,6 +673,11 @@ async def login(
 
         if user.status != "ACTIVE":
             if user.status == "PENDING":
+                return {
+                    "status": "False",
+                    "message": "На вашу почту была отправлена ссылка для подтверждения регистрации. Пожалуйста, проверьте папку 'Спам' или папку 'Входящие'"
+                }
+            if user.status == "VERIFIED":
                 return {
                     "status": "False",
                     "message": "Заявка на рассмотрении. Благодарим за ожидание, в скором времени с вами свяжутся"
@@ -760,6 +909,12 @@ async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
     path = request.url.path
     target_url = ROUTES.get(path.split("/")[1])
 
+    if request.headers.get("X-User-Id") == "-1" and ROUTES_NA.get(path.split("/")[1]) is None:
+        return {
+            "status": "False",
+            "message": "Non-registered user!"
+        }
+
     if not target_url:
         return {
             "status": "False",
@@ -789,6 +944,3 @@ async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
         status_code=response.status_code,
         headers=response.headers,
     )
-
-
-# asyncio.run(app.state.rabbit)

@@ -10,8 +10,10 @@ engine = create_async_engine(
     pool_pre_ping=True,
     max_overflow=10,
     pool_recycle=3600,
-    pool_size=5,
+    pool_size=15,
+    pool_timeout=30,
 )
+
 
 def get_async_session():
 

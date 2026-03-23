@@ -1,6 +1,8 @@
 import os
 import uuid
 import json
+import aiofiles
+import io
 
 from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body
 import httpx
@@ -51,6 +53,9 @@ async def lifespan(cl: FastAPI):
         durable=True
     )
 
+    async with aiofiles.open("static/default_avatar.png", mode="rb") as f:
+        avatar_cached = await f.read()
+
     deletion = await rabbit.channel.declare_queue("v1.queue.deletion")
     await deletion.bind(exchange=user_actions, routing_key="v1.queue.deletion")
 
@@ -59,7 +64,7 @@ async def lifespan(cl: FastAPI):
 
     app.state.d_queue = deletion
     app.state.c_queue = changes
-
+    app.state.avatar_cached = avatar_cached
     app.state.task = asyncio.create_task((main()))
 
     try:
@@ -72,6 +77,9 @@ async def lifespan(cl: FastAPI):
 
 async def get_httpx(request: Request) -> httpx.AsyncClient:
     return request.app.state.http_client
+
+async def get_avatar():
+    return app.state.avatar_cached
 
 
 app = FastAPI(lifespan=lifespan)
@@ -228,23 +236,24 @@ async def get_user(
 @app.post("/users/add-user")
 async def add_user(
         db: AsyncSession = Depends(get_db),
-        avatar: UploadFile = File(...),
         client: AsyncClient = Depends(get_httpx),
         username: str = Form(...),
         email: str = Form(...),
         role: str = Form(...),
         uid: str = Form(...),
         telephone: str = Form(...),
+        avatar = Depends(get_avatar),
 ):
     async def read_file():
-        while chunk := await avatar.read(64 * 1024):
+        stream = io.BytesIO(avatar)
+        while chunk := stream.read(64 * 1024):
             yield chunk
 
     filename = str(uuid.uuid4())
 
     req = client.build_request(
         method="POST",
-        url=f"http://media-service:5001/media/add-image/{avatar.content_type.split("/")[1]}",
+        url="http://media-service:5001/media/add-image/png",
         headers={"X-Key": MEDIA_KEY, "X-Name": filename},
         content=read_file(),
     )
@@ -258,11 +267,11 @@ async def add_user(
         }
     else:
         user = CustomersDB(id=uid, username=username, email=email, date_created=datetime.now(timezone.utc),
-                           image=str(filename + '.' + avatar.content_type.split("/")[1])) if role == "1" else ProdDB(
+                           image=str(filename + '.' + "png")) if role == "1" else ProdDB(
             name=username, id=uid, email=email,
             date_created=datetime.now(
                 timezone.utc),
-            image=str(filename + '.' + avatar.content_type.split("/")[1]),
+            image=str(filename + '.' + "png"),
             telephone=telephone, )
         db.add(user)
         await db.commit()

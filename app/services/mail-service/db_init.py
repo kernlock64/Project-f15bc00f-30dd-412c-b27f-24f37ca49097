@@ -11,7 +11,9 @@ engine = create_async_engine(
     max_overflow=10,
     pool_recycle=3600,
     pool_size=5,
+    pool_timeout=30,
 )
+
 
 def get_async_session():
 

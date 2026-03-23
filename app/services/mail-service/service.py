@@ -117,6 +117,13 @@ async def password_forget(
 ):
 
     email_to = data["email_to"]
+
+    '''FAKE-URL!'''
+
+    data["url"] = "https://fake.url/" + data["r_token"]
+
+    '''FAKE-URL!'''
+
     mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc), theme="password-forget")
     db.add(mail)
     await db.commit()
@@ -180,6 +187,30 @@ async def registration_provider(
     await db.commit()
 
     background_tasks.add_task(send_email_async, "Регистрация", email_to, data, "on-acceptance-provider.html")
+    return {
+        "status": "True",
+    }
+
+@app.post("/mail/on-confirmation-mail")
+async def on_confirming_mail(
+        background_tasks: BackgroundTasks,
+        data: dict = Body(...),
+        db: AsyncSession = Depends(get_db),
+):
+
+    email_to = data["email_to"]
+
+    '''FAKE-URL!'''
+
+    data["url"] = "https://fake.url/?token=" + data["token"]
+
+    '''FAKE-URL!'''
+
+    mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc), theme="account-confirmation")
+    db.add(mail)
+    await db.commit()
+
+    background_tasks.add_task(send_email_async, "Сброс пароля", email_to, data, "on-confirmation.html")
     return {
         "status": "True",
     }
