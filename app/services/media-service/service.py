@@ -27,7 +27,7 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 
 app = FastAPI(lifespan=lifespan)
 
-@app.get("/media/get-image/{filename}")
+@app.get("/api/v1/media/get-image/{filename}")
 async def get_image(filename: str,
                     request: Request,
               client: AsyncClient = Depends(get_httpx)):
@@ -52,7 +52,7 @@ async def get_image(filename: str,
             "message": str(e),
         }
 
-@app.post("/media/add-image/{ext}")
+@app.post("/api/v1/media/add-image/{ext}")
 async def add_image(
         ext: str,
         request: Request,
@@ -89,7 +89,7 @@ async def add_image(
         }
 
 
-@app.delete("/media/delete-image/{filename}")
+@app.delete("/api/v1/media/delete-image/{filename}")
 async def delete_image(
         filename: str, request: Request,
         client: AsyncClient = Depends(get_httpx)):
@@ -125,7 +125,7 @@ async def delete_image(
         }
 
 
-@app.post("/media/change-image/{filename}")
+@app.post("/api/v1/media/change-image/{filename}")
 async def change_image(
         filename: str,
         request: Request,

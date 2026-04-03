@@ -111,7 +111,7 @@ async def delete_user(
 
         client = app.state.http_client
 
-        await client.delete(f"http://media-service:5001/media/delete-image/{avatar}",
+        await client.delete(f"http://api/v1/media-service:5001/media/delete-image/{avatar}",
                                  headers={"X-Key": MEDIA_KEY})
 
         await db.commit()
@@ -174,7 +174,7 @@ async def main():
     )
 
 
-@app.get("/users/get-user")
+@app.get("/api/v1/users/get-user")
 async def get_user(
         request: Request,
         db: AsyncSession = Depends(get_db),
@@ -183,7 +183,7 @@ async def get_user(
     uid = request.headers.get("X-User-Id")
     role = request.headers.get("X-Role")
 
-    res1 = await client.get(f"http://favourite-service:5005/favourites/get-favourites", headers=request.headers)
+    res1 = await client.get(f"http://api/v1/favourite-service:5005/favourites/get-favourites", headers=request.headers)
 
     if res1.json()["status"] != "True":
         return {
@@ -204,7 +204,7 @@ async def get_user(
         }
     if role == "2":
 
-        res2 = await client.get(f"http://post-service:5003/posts/get-posts", headers=request.headers)
+        res2 = await client.get(f"http://api/v1/post-service:5003/posts/get-posts", headers=request.headers)
         if res2.json()["status"] != "True":
             return {
                 "status": "False",
@@ -232,8 +232,38 @@ async def get_user(
             "message": "Unknown error!",
         }
 
+@app.get("/api/v1/users/{uid}")
+async def get_user(
+        request: Request,
+        uid: str,
+        db: AsyncSession = Depends(get_db),
+        client: AsyncClient = Depends(get_httpx),
+):
 
-@app.post("/users/add-user")
+    res = await client.get(f"http://api/v1/post-service:5003/posts/get-posts", headers=request.headers)
+    if res.json()["status"] != "True":
+        return {
+                "status": "False",
+                "message": "Something went wrong!",
+        }
+
+    users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
+    user = users.scalar_one_or_none()
+    return {
+            "id": str(user.id),
+            "name": str(user.name),
+            "email": str(user.email),
+            "image": str(user.image),
+            "date_created": str(user.date_created),
+            "full_name": str(user.full_name),
+            "telephone": str(user.telephone),
+            "description": str(user.description),
+            "delivery_description": str(user.delivery_description),
+            "posts": str(res.json()["posts"]),
+    }
+
+
+@app.post("/api/v1/users/add-user")
 async def add_user(
         db: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
@@ -253,7 +283,7 @@ async def add_user(
 
     req = client.build_request(
         method="POST",
-        url="http://media-service:5001/media/add-image/png",
+        url="http://api/v1/media-service:5001/media/add-image/png",
         headers={"X-Key": MEDIA_KEY, "X-Name": filename},
         content=read_file(),
     )
@@ -281,7 +311,7 @@ async def add_user(
         }
 
 
-@app.post("/users/change-userdata")
+@app.post("/api/v1/users/change-userdata")
 async def change_userdata(
         request: Request,
         db: AsyncSession = Depends(get_db),
@@ -307,7 +337,7 @@ async def change_userdata(
     }
 
 
-@app.post("/users/change-avatar")
+@app.post("/api/v1/users/change-avatar")
 async def change_avatar(
         request: Request,
         db: AsyncSession = Depends(get_db),
@@ -326,7 +356,7 @@ async def change_avatar(
 
     req = client.build_request(
         method="POST",
-        url=f"http://media-service:5001/media/add-image/{filename}",
+        url=f"http://api/v1/media-service:5001/media/add-image/{filename}",
         headers={"X-Key": MEDIA_KEY, "X-Name": filename},
         content=read_file(),
     )

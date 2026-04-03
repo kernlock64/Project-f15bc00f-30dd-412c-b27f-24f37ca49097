@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 import aio_pika
 import asyncio
+from category_init import *
 
 
 class RabbitMQGateway:
@@ -92,7 +93,7 @@ async def delete_user(
         await db.execute(delete(cls).where(cls.id == uid))
         client = app.state.http_client
         for i in image_ids:
-            await client.delete(f"http://media-service:5001/media/delete-image/{i}",
+            await client.delete(f"http://api/v1/media-service:5001/media/delete-image/{i}",
                                 headers={"X-Key": MEDIA_KEY, "X-Directory": i})
         await db.commit()
     return {
@@ -118,26 +119,61 @@ async def main():
         listen_deletion(),
     )
 
-'''TEST DATA/TEST ENDPOINTS'''
+@app.get("/api/v1/posts/{path:path}")
+async def get_posts(
+        path: str,
+        db: AsyncSession = Depends(get_db),
+):
 
-@app.get("/posts/get-post")
+    category_id = PATH_TO_ID.get(path)
+
+    if not category_id:
+        return {
+            "status": "False",
+            "message": "Страницы не существует!"
+        }
+
+    category = CATEGORIES_CACHE.get(category_id)
+
+    if category["is_leaf"]:
+        posts = await db.execute(select(PostDB).where(PostDB.category_id == category_id))
+        pass
+
+    else:
+        cat = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == category_id]
+        return {
+            "status": "True",
+            "categories": cat,
+
+        }
+
+    return 0
+
+
+@app.get("/api/v1/posts/{post_id}")
 async def get_post():
-    return {"status": "True",
-            "p_image": str(random.randint(1, 100)),
-            "p_title": str(random.randint(1, 100)),
-            }
+    pass
 
-@app.get("/posts/get-posts")
-async def get_posts():
-    return {"status": "True",
-            "posts": []}
+@app.post("/api/v1/posts/add-post")
+async def add_post():
+    pass
 
-@app.post("/posts/deletion")
-async def get_post():
-    return {"status": "True",
-            }
+@app.post("/api/v1/posts/changes-post")
+async def changes_post():
+    pass
 
+@app.post("/api/v1/posts/delete-post")
+async def delete_post():
+    pass
 
-'''TEST DATA/TEST ENDPOINTS'''
+@app.post("/api/v1/posts/delete-post")
+async def delete_post():
+    pass
 
-# asyncio.run(main(app.state.rabbit))
+@app.post("/api/v1/posts/report-post")
+async def report_post():
+    pass
+
+@app.get("/api/v1/posts/get-categories")
+async def get_categories():
+    pass

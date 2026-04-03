@@ -116,14 +116,14 @@ async def main():
     )
 
 
-@app.post("/favourites/changes")
+@app.post("/api/v1/favourites/changes")
 async def favourite_changes(
         post_id: int = Form(...),
 ):
     cache.pop(post_id, None)
 
 
-@app.get("/favourites/get-favourites")
+@app.get("/api/v1/favourites/get-favourites")
 async def get_favourites(
         request: Request,
         db: AsyncSession = Depends(get_db),
@@ -142,7 +142,7 @@ async def get_favourites(
                 "message": str(e), }
 
 
-@app.get("/favourites/is-favourite")
+@app.get("/api/v1/favourites/is-favourite")
 async def is_favourite(
         request: Request,
         db: AsyncSession = Depends(get_db),
@@ -164,7 +164,7 @@ async def is_favourite(
                 "message": str(e), }
 
 
-@app.post("/favourites/{post_id}")
+@app.post("/api/v1/favourites/{post_id}")
 async def favourite_manager(
         request: Request,
         post_id: int,
@@ -198,7 +198,7 @@ async def add_favourite(
     try:
         c = cache.get(post_id)
         if not c:
-            resp = await client.get("http://post-service:5003/posts/get-post")
+            resp = await client.get("http://api/v1/post-service:5003/posts/get-post")
             cache[post_id] = resp.json()
 
             r = resp.json()

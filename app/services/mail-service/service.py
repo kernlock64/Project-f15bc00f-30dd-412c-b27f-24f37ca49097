@@ -91,7 +91,7 @@ async def send_email_async(subject: str, email_to: str, body: dict, template_nam
     await fm.send_message(message, template_name=template_name)
 
 
-@app.post("/mail/on-password-change")
+@app.post("/api/v1/mail/on-password-change")
 async def password_change(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
@@ -109,7 +109,7 @@ async def password_change(
     }
 
 
-@app.post("/mail/on-password-forget")
+@app.post("/api/v1/mail/on-password-forget")
 async def password_forget(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
@@ -134,7 +134,7 @@ async def password_forget(
     }
 
 
-@app.post("/mail/on-suspicious-activity")
+@app.post("/api/v1/mail/on-suspicious-activity")
 async def suspicious_activity(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
@@ -154,7 +154,7 @@ async def suspicious_activity(
     }
 
 
-@app.post("/mail/on-requesting-provider")
+@app.post("/api/v1/mail/on-requesting-provider")
 async def requesting_provider(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
@@ -173,7 +173,7 @@ async def requesting_provider(
     }
 
 
-@app.post("/mail/on-acceptance-provider")
+@app.post("/api/v1/mail/on-acceptance-provider")
 async def registration_provider(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
@@ -191,7 +191,7 @@ async def registration_provider(
         "status": "True",
     }
 
-@app.post("/mail/on-confirmation-mail")
+@app.post("/api/v1/mail/on-confirmation-mail")
 async def on_confirming_mail(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
@@ -216,7 +216,7 @@ async def on_confirming_mail(
     }
 
 
-@app.post("/mail/on-deletion")
+@app.post("/api/v1/mail/on-deletion")
 async def account_deletion(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
@@ -234,7 +234,7 @@ async def account_deletion(
     }
 
 
-@app.post("/mail/on-registration")
+@app.post("/api/v1/mail/on-registration")
 async def registration(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),

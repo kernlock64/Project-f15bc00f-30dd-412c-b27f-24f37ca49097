@@ -188,20 +188,21 @@ async def get_db():
 
 ROUTES = {
 
-    "users": "http://user-service:5004",
-    "posts": "http://post-service:5003",
-    "favourites": "http://favourite-service:5005",
-    "admin": "http://admin-service:5006",
+    "users": "http://api/v1/user-service:5004",
+    "posts": "http://api/v1/post-service:5003",
+    "favourites": "http://api/v1/favourite-service:5005",
+    "admin": "http://api/v1/admin-service:5006",
 }
 
 ROUTES_NA = {
-    "posts": "http://post-service:5003",
+    "posts": "http://api/v1/post-service:5003",
 }
 
 
 @app.middleware("http")
 async def proxy(request: Request, call_next):
-    if request.url.path in {"/registration", "/login", "/refresh", "/forgot-password", "/user-confirm"}:
+    if request.url.path in {"api/v1/registration", "api/v1/login", "api/v1/refresh", "api/v1/forgot-password",
+                            "api/v1/user-confirm"}:
         return await call_next(request)
 
     token = request.cookies.get("access_t")
@@ -316,13 +317,12 @@ async def proxy(request: Request, call_next):
     }
 
 
-@app.post("/user-confirm")
+@app.post("/api/v1/user-confirm")
 async def user_confirm(
         token: str,
         db: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
 ):
-
     public_key = os.getenv("PUBLIC_KEY").replace("\\n", "\n")
 
     try:
@@ -361,14 +361,14 @@ async def user_confirm(
     user.status = "ACTIVE" if role == 1 else "VERIFIED"
     await db.commit()
 
-    await client.post("http://user-service:5004/users/add-user", data={
+    await client.post("http://api/v1/user-service:5004/users/add-user", data={
         "username": user.username,
         "email": user.email,
         "role": user.role,
         "uid": user.uid,
         "telephone": telephone,
     })
-    await client.post("http://mail-service:5002/mail/on-registration", json={
+    await client.post("http://api/v1/mail-service:5002/mail/on-registration", json={
         "username": user.username,
     },
                       headers={"Content-Type": "application/json"})
@@ -416,7 +416,7 @@ async def check_data(password, email, username, session: AsyncSession):
     return {"status": "True", }
 
 
-@app.post("/forgot-password")
+@app.post("api/v1/forgot-password")
 async def forgot_password(
         db: AsyncSession = Depends(get_db),
         email: str = Form(...),
@@ -442,7 +442,7 @@ async def forgot_password(
                 "r_token": reset_t
             }
 
-            await client.post("http://mail-service:5002/mail/on-password-forget", json=templ_data,
+            await client.post("http://api/v1/mail-service:5002/mail/on-password-forget", json=templ_data,
                               headers={"Content-Type": "application/json"})
 
         return {
@@ -457,7 +457,7 @@ async def forgot_password(
         }
 
 
-@app.post("/logout")
+@app.post("/api/v1/logout")
 async def logout(
         request: Request,
         db: AsyncSession = Depends(get_db),
@@ -483,7 +483,7 @@ async def logout(
     return response
 
 
-@app.post("/registration")
+@app.post("api/v1/registration")
 async def registration(
         session: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
@@ -544,7 +544,7 @@ async def registration(
 
         if user.role == 2:
 
-            resp = await client.post("http://mail-service:5002/mail/on-requesting-provider", json=templ_data,
+            resp = await client.post("http://api/v1/mail-service:5002/mail/on-requesting-provider", json=templ_data,
                                      headers={"Content-Type": "application/json"})
             if resp.status_code != 200:
                 await session.rollback()
@@ -572,7 +572,7 @@ async def registration(
             "email_to": email,
         }
 
-        await client.post("http://mail-service:5002/mail/on-confirmation-mail", json=template_data,
+        await client.post("http://api/v1/mail-service:5002/mail/on-confirmation-mail", json=template_data,
                           headers={"Content-Type": "application/json"})
 
         return message
@@ -597,7 +597,7 @@ async def deletion_task(uid, role
         }
 
 
-@app.post("/delete-user")
+@app.post("api/v1/delete-user")
 async def delete(
         request: Request,
         background_tasks: BackgroundTasks,
@@ -625,7 +625,7 @@ async def delete(
             "username": user.username,
         }
 
-        resp = await client.post("http://mail-service:5002/mail/on-deletion", json=templ_data,
+        resp = await client.post("http://api/v1/mail-service:5002/mail/on-deletion", json=templ_data,
                                  headers={"Content-Type": "application/json"})
         if resp.status_code != 200:
             await db.rollback()
@@ -644,7 +644,7 @@ async def delete(
         }
 
 
-@app.post("/login")
+@app.post("/api/v1/login")
 async def login(
         response: Response,
         background_tasks: BackgroundTasks,
@@ -725,7 +725,7 @@ async def login(
         }
 
 
-@app.post("/change-password")
+@app.post("/api/v1/change-password")
 async def change_password(
         request: Request,
         session: AsyncSession = Depends(get_db),
@@ -753,7 +753,7 @@ async def change_password(
             "username": user.username,
         }
 
-        resp = await client.post("http://mail-service:5002/mail/on-password-change", json=templ_data,
+        resp = await client.post("http://api/v1/mail-service:5002/mail/on-password-change", json=templ_data,
                                  headers={"Content-Type": "application/json"})
         if resp.status_code != 200:
             await session.rollback()
@@ -770,7 +770,7 @@ async def change_password(
         }
 
 
-@app.post("/change-email")
+@app.post("/api/v1/change-email")
 async def change_email(
         request: Request,
         session: AsyncSession = Depends(get_db),
@@ -808,7 +808,7 @@ async def change_email(
         }
 
 
-@app.post("/refresh")
+@app.post("/api/v1/refresh")
 async def refresh(
         request: Request,
         response: Response,
@@ -852,7 +852,7 @@ async def refresh(
                 "username": user.username,
             }
 
-            resp = await client.post("http://mail-service:5002/mail/on-suspicious-activity", json=templ_data,
+            resp = await client.post("http://api/v1/mail-service:5002/mail/on-suspicious-activity", json=templ_data,
                                      headers={"Content-Type": "application/json"})
             if resp.status_code != 200:
                 await session.rollback()
