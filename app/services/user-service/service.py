@@ -111,7 +111,7 @@ async def delete_user(
 
         client = app.state.http_client
 
-        await client.delete(f"http://api/v1/media-service:5001/media/delete-image/{avatar}",
+        await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{avatar}",
                                  headers={"X-Key": MEDIA_KEY})
 
         await db.commit()
@@ -183,7 +183,7 @@ async def get_user(
     uid = request.headers.get("X-User-Id")
     role = request.headers.get("X-Role")
 
-    res1 = await client.get(f"http://api/v1/favourite-service:5005/favourites/get-favourites", headers=request.headers)
+    res1 = await client.get(f"http://favourite-service:5005/api/v1/favourites/get-favourites", headers=request.headers)
 
     if res1.json()["status"] != "True":
         return {
@@ -204,7 +204,7 @@ async def get_user(
         }
     if role == "2":
 
-        res2 = await client.get(f"http://api/v1/post-service:5003/posts/get-posts", headers=request.headers)
+        res2 = await client.get(f"http://post-service:5003/api/v1/posts/get-posts", headers=request.headers)
         if res2.json()["status"] != "True":
             return {
                 "status": "False",
@@ -240,7 +240,7 @@ async def get_user(
         client: AsyncClient = Depends(get_httpx),
 ):
 
-    res = await client.get(f"http://api/v1/post-service:5003/posts/get-posts", headers=request.headers)
+    res = await client.get(f"http://post-service:5003/api/v1/posts/get-posts", headers=request.headers)
     if res.json()["status"] != "True":
         return {
                 "status": "False",
@@ -283,7 +283,7 @@ async def add_user(
 
     req = client.build_request(
         method="POST",
-        url="http://api/v1/media-service:5001/media/add-image/png",
+        url="http://media-service:5001/api/v1/media/add-image/png",
         headers={"X-Key": MEDIA_KEY, "X-Name": filename},
         content=read_file(),
     )
@@ -356,7 +356,7 @@ async def change_avatar(
 
     req = client.build_request(
         method="POST",
-        url=f"http://api/v1/media-service:5001/media/add-image/{filename}",
+        url=f"http://media-service:5001/api/v1/media/add-image/{filename}",
         headers={"X-Key": MEDIA_KEY, "X-Name": filename},
         content=read_file(),
     )

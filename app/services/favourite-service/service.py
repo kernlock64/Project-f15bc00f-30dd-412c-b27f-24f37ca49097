@@ -198,7 +198,7 @@ async def add_favourite(
     try:
         c = cache.get(post_id)
         if not c:
-            resp = await client.get("http://api/v1/post-service:5003/posts/get-post")
+            resp = await client.get("http://post-service:5003/api/v1/posts/get-post")
             cache[post_id] = resp.json()
 
             r = resp.json()

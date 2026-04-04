@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from sqlalchemy import *
 from httpx import Limits, AsyncClient
 from db_init import get_async_session, engine
-from model import PostDB, CategoryDB
+from model import PostDB
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 import aio_pika
@@ -93,7 +93,7 @@ async def delete_user(
         await db.execute(delete(cls).where(cls.id == uid))
         client = app.state.http_client
         for i in image_ids:
-            await client.delete(f"http://api/v1/media-service:5001/media/delete-image/{i}",
+            await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{i}",
                                 headers={"X-Key": MEDIA_KEY, "X-Directory": i})
         await db.commit()
     return {

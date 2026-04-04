@@ -188,21 +188,22 @@ async def get_db():
 
 ROUTES = {
 
-    "users": "http://api/v1/user-service:5004",
-    "posts": "http://api/v1/post-service:5003",
-    "favourites": "http://api/v1/favourite-service:5005",
-    "admin": "http://api/v1/admin-service:5006",
+    "users": "http://user-service:5004",
+    "posts": "http://post-service:5003",
+    "favourites": "http://favourite-service:5005",
+    "admin": "http://admin-service:5006",
 }
 
 ROUTES_NA = {
-    "posts": "http://api/v1/post-service:5003",
+    "posts": "http://post-service:5003",
 }
 
 
 @app.middleware("http")
 async def proxy(request: Request, call_next):
-    if request.url.path in {"api/v1/registration", "api/v1/login", "api/v1/refresh", "api/v1/forgot-password",
-                            "api/v1/user-confirm"}:
+    print(request.url.path)
+    if request.url.path in {"/api/v1/registration", "/api/v1/login", "/api/v1/refresh", "/api/v1/forgot-password",
+                            "/api/v1/user-confirm"}:
         return await call_next(request)
 
     token = request.cookies.get("access_t")
@@ -361,14 +362,14 @@ async def user_confirm(
     user.status = "ACTIVE" if role == 1 else "VERIFIED"
     await db.commit()
 
-    await client.post("http://api/v1/user-service:5004/users/add-user", data={
+    await client.post("http://user-service:5004/api/v1/users/add-user", data={
         "username": user.username,
         "email": user.email,
         "role": user.role,
         "uid": user.uid,
         "telephone": telephone,
     })
-    await client.post("http://api/v1/mail-service:5002/mail/on-registration", json={
+    await client.post("http://mail-service:5002/api/v1/mail/on-registration", json={
         "username": user.username,
     },
                       headers={"Content-Type": "application/json"})
@@ -416,7 +417,7 @@ async def check_data(password, email, username, session: AsyncSession):
     return {"status": "True", }
 
 
-@app.post("api/v1/forgot-password")
+@app.post("/api/v1/forgot-password")
 async def forgot_password(
         db: AsyncSession = Depends(get_db),
         email: str = Form(...),
@@ -442,7 +443,7 @@ async def forgot_password(
                 "r_token": reset_t
             }
 
-            await client.post("http://api/v1/mail-service:5002/mail/on-password-forget", json=templ_data,
+            await client.post("http://mail-service:5002/api/v1/mail/on-password-forget", json=templ_data,
                               headers={"Content-Type": "application/json"})
 
         return {
@@ -483,7 +484,7 @@ async def logout(
     return response
 
 
-@app.post("api/v1/registration")
+@app.post("/api/v1/registration")
 async def registration(
         session: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
@@ -540,11 +541,12 @@ async def registration(
 
         message = {
             "status": "True",
+            "message": "Пожалуйста подтвердите вашу электронную почту, перейдя по отправленной ссылке"
         }
 
         if user.role == 2:
 
-            resp = await client.post("http://api/v1/mail-service:5002/mail/on-requesting-provider", json=templ_data,
+            resp = await client.post("http://mail-service:5002/api/v1/mail/on-requesting-provider", json=templ_data,
                                      headers={"Content-Type": "application/json"})
             if resp.status_code != 200:
                 await session.rollback()
@@ -572,7 +574,7 @@ async def registration(
             "email_to": email,
         }
 
-        await client.post("http://api/v1/mail-service:5002/mail/on-confirmation-mail", json=template_data,
+        await client.post("http://mail-service:5002/api/v1/mail/on-confirmation-mail", json=template_data,
                           headers={"Content-Type": "application/json"})
 
         return message
@@ -597,7 +599,7 @@ async def deletion_task(uid, role
         }
 
 
-@app.post("api/v1/delete-user")
+@app.post("/api/v1/delete-user")
 async def delete(
         request: Request,
         background_tasks: BackgroundTasks,
@@ -625,7 +627,7 @@ async def delete(
             "username": user.username,
         }
 
-        resp = await client.post("http://api/v1/mail-service:5002/mail/on-deletion", json=templ_data,
+        resp = await client.post("http://mail-service:5002/api/v1/mail/on-deletion", json=templ_data,
                                  headers={"Content-Type": "application/json"})
         if resp.status_code != 200:
             await db.rollback()
@@ -753,7 +755,7 @@ async def change_password(
             "username": user.username,
         }
 
-        resp = await client.post("http://api/v1/mail-service:5002/mail/on-password-change", json=templ_data,
+        resp = await client.post("http://mail-service:5002/api/v1/mail/on-password-change", json=templ_data,
                                  headers={"Content-Type": "application/json"})
         if resp.status_code != 200:
             await session.rollback()
@@ -852,7 +854,7 @@ async def refresh(
                 "username": user.username,
             }
 
-            resp = await client.post("http://api/v1/mail-service:5002/mail/on-suspicious-activity", json=templ_data,
+            resp = await client.post("http://mail-service:5002/api/v1/mail/on-suspicious-activity", json=templ_data,
                                      headers={"Content-Type": "application/json"})
             if resp.status_code != 200:
                 await session.rollback()
@@ -907,9 +909,15 @@ async def refresh(
 @app.api_route("/{path:path}", methods=["GET", "POST", "DELETE"])
 async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
     path = request.url.path
-    target_url = ROUTES.get(path.split("/")[1])
+    try:
+        target_url = ROUTES.get(path.split("/")[3])
+    except Exception:
+        return {
+            "status": "False",
+            "message": "Invalid URL!"
+        }
 
-    if request.headers.get("X-User-Id") == "-1" and ROUTES_NA.get(path.split("/")[1]) is None:
+    if request.headers.get("X-User-Id") == "-1" and ROUTES_NA.get(path.split("/")[3]) is None:
         return {
             "status": "False",
             "message": "Non-registered user!"
@@ -928,6 +936,8 @@ async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
         final_url = f"{target_url + path}?{request.url.query}"
     else:
         final_url = target_url + path
+
+    print(final_url)
 
     headers = {key: value for key, value in request.headers.items() if key.lower() not in exc}
 
