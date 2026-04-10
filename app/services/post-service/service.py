@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import random
+from meilisearch_python_sdk import AsyncClient as MeiliClient
 
 from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body
 import httpx
@@ -32,6 +33,8 @@ class RabbitMQGateway:
         if self.connection:
             await self.connection.close()
 
+MEILI_URL = "http://meilisearch:7700"
+MEILI_KEY = os.getenv("MEILISEARCH_KEY")
 MEDIA_KEY = os.getenv("MEDIA_KEY")
 
 limits = Limits(
@@ -45,6 +48,28 @@ async def lifespan(cl: FastAPI):
     cl.state.http_client = client
     factory = get_async_session()
     app.state.db = factory
+    meili_engine = MeiliClient(url=MEILI_URL, api_key=MEILI_KEY)
+
+    index = meili_engine.index("products")
+    await index.update_filterable_attributes([
+        "price",
+        "category_id",
+        "attributes",
+    ])
+    await index.update_searchable_attributes([
+        "title",
+        "description"
+    ])
+    await index.update_displayed_attributes(["id", "title", "price", "image_url", "categories"])
+    await index.update_ranking_rules([
+        "words",
+        "typo",
+        "proximity",
+        "attribute",
+        "sort",
+        "exactness"
+    ])
+
     rabbit = RabbitMQGateway()
     await rabbit.connect()
 
@@ -58,7 +83,7 @@ async def lifespan(cl: FastAPI):
     await deletion.bind(exchange=user_actions, routing_key="v1.queue.deletion")
 
     app.state.d_queue = deletion
-
+    app.state.meilisearch = meili_engine
     app.state.task = asyncio.create_task((main()))
 
     try:
@@ -67,6 +92,7 @@ async def lifespan(cl: FastAPI):
         await client.aclose()
         await engine.dispose()
         await rabbit.close()
+        await meili_engine.aclose()
         app.state.task.cancel()
 
 async def get_httpx(request: Request) -> httpx.AsyncClient:
@@ -80,6 +106,9 @@ async def get_db():
     factory = app.state.db
     async with factory() as session:
         yield session
+
+async def get_meili():
+    return app.state.meilisearch
 
 
 async def delete_user(
@@ -122,7 +151,6 @@ async def main():
 @app.get("/api/v1/posts/{path:path}")
 async def get_posts(
         path: str,
-        db: AsyncSession = Depends(get_db),
 ):
 
     category_id = PATH_TO_ID.get(path)
@@ -136,8 +164,16 @@ async def get_posts(
     category = CATEGORIES_CACHE.get(category_id)
 
     if category["is_leaf"]:
-        posts = await db.execute(select(PostDB).where(PostDB.category_id == category_id))
-        pass
+        return {
+            "status": "True",
+            "category_id": category_id,
+            "title": category["name"],
+            "metadata": {
+                "api_url": "/api/v1/posts/search",
+                "base_filter": f"category_id = {category_id}",
+                "index": "posts",
+            }
+        }
 
     else:
         cat = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == category_id]
@@ -147,12 +183,41 @@ async def get_posts(
 
         }
 
-    return 0
+@app.get("/api/v1/posts/search")
+async def search_posts(
+        page: int = 1,
+        limit: int = 10,
+        fil: str = None,
+        q: str = None,
+        meili: MeiliClient = Depends(get_meili),
+):
+    result = await meili.index("posts").search(q, filter=fil, page=page, limit=limit)
 
+    return {
+        "status": "True",
+        "posts": result.hits if result.hits else [],
+    }
 
 @app.get("/api/v1/posts/{post_id}")
-async def get_post():
-    pass
+async def get_post(
+        post_id: int,
+        db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
+    post = res.scalar_one_or_none()
+
+
+    return {
+        "status": "True",
+        "title": post.title,
+        "author_id": post.author_id,
+        "description": post.description,
+        "images": post.images,
+        "directory_name": post.directory_name,
+        "posted_at": post.posted_at,
+        "category_id": post.category_id,
+
+    }
 
 @app.post("/api/v1/posts/add-post")
 async def add_post():
@@ -172,8 +237,4 @@ async def delete_post():
 
 @app.post("/api/v1/posts/report-post")
 async def report_post():
-    pass
-
-@app.get("/api/v1/posts/get-categories")
-async def get_categories():
     pass
