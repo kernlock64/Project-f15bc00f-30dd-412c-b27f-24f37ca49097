@@ -258,28 +258,6 @@ services:
         condition: service_healthy
     restart: always
 
-#  view-service:
-#    ports:
-#      - ${VIEW_PORT}
-#    networks:
-#      - internal
-#        environment:
-#         - "PYTHONPATH=."
-#        - DATABASE_URL=${AUTH_DB_URL}
-#        - SERVICE_PORT=${AUTH_PORT}
-#        - DB_USER=${DB_USER}
-#        - DB_PASSWORD=${DB_PASSWORD}
-#        - DB_PORT=${DB_PORT}
-#        - DB_HOST=${DB_HOST}
-#        - SERVICE_NAME="view_service"
-#    build: ./services/view-service
-#    depends_on:
-#      db:
-#        condition: service_healthy
-#      auth-service:
-#        condition: service_healthy
-#    restart: always
-
   user-service:
     build: ./services/user-service
     expose:

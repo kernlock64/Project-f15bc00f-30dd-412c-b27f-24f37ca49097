@@ -231,10 +231,6 @@ async def changes_post():
 async def delete_post():
     pass
 
-@app.post("/api/v1/posts/delete-post")
-async def delete_post():
-    pass
-
 @app.post("/api/v1/posts/report-post")
 async def report_post():
     pass
