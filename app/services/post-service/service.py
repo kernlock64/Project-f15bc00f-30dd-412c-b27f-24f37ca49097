@@ -1,12 +1,9 @@
 import os
-import uuid
 import json
-import random
 from meilisearch_python_sdk import AsyncClient as MeiliClient
 
 from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body
 import httpx
-from datetime import datetime, timezone
 from sqlalchemy import *
 from httpx import Limits, AsyncClient
 from db_init import get_async_session, engine
@@ -33,6 +30,7 @@ class RabbitMQGateway:
         if self.connection:
             await self.connection.close()
 
+
 MEILI_URL = "http://meilisearch:7700"
 MEILI_KEY = os.getenv("MEILISEARCH_KEY")
 MEDIA_KEY = os.getenv("MEDIA_KEY")
@@ -41,6 +39,7 @@ limits = Limits(
     max_connections=1000,
     max_keepalive_connections=100,
 )
+
 
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
@@ -95,6 +94,7 @@ async def lifespan(cl: FastAPI):
         await meili_engine.aclose()
         app.state.task.cancel()
 
+
 async def get_httpx(request: Request) -> httpx.AsyncClient:
     return request.app.state.http_client
 
@@ -106,6 +106,7 @@ async def get_db():
     factory = app.state.db
     async with factory() as session:
         yield session
+
 
 async def get_meili():
     return app.state.meilisearch
@@ -148,11 +149,11 @@ async def main():
         listen_deletion(),
     )
 
+
 @app.get("/api/v1/posts/{path:path}")
 async def get_posts(
         path: str,
 ):
-
     category_id = PATH_TO_ID.get(path)
 
     if not category_id:
@@ -183,6 +184,7 @@ async def get_posts(
 
         }
 
+
 @app.get("/api/v1/posts/search")
 async def search_posts(
         page: int = 1,
@@ -198,6 +200,7 @@ async def search_posts(
         "posts": result.hits if result.hits else [],
     }
 
+
 @app.get("/api/v1/posts/{post_id}")
 async def get_post(
         post_id: int,
@@ -205,7 +208,6 @@ async def get_post(
 ):
     res = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
     post = res.scalar_one_or_none()
-
 
     return {
         "status": "True",
@@ -216,20 +218,82 @@ async def get_post(
         "directory_name": post.directory_name,
         "posted_at": post.posted_at,
         "category_id": post.category_id,
+        "price_list_id": post.price_list_id,
+        "coordinates": post.coordinates,
 
     }
 
+
 @app.post("/api/v1/posts/add-post")
-async def add_post():
+async def add_post(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+        changed_data: dict = Body,
+):
     pass
+
 
 @app.post("/api/v1/posts/changes-post")
-async def changes_post():
-    pass
+async def changes_post(
+        request: Request,
+        post_id: int,
+        db: AsyncSession = Depends(get_db),
+        changed_data: dict = Body,
+):
+    uid = request.headers.get("X-User-Id")
+    cls = PostDB
+
+    posts = await db.execute(select(cls).where(PostDB.id == int(post_id), PostDB.author_id == uid))
+    post = posts.scalar_one_or_none()
+
+    if not post:
+        return {
+            "status": "False",
+            "message": "No such post!",
+        }
+
+    for key, value in changed_data.items():
+        if not key in cls.__table__.columns and key not in ["author_id", "price_list_id", "date_created", "posted_at",
+                                                            "images"]:
+            return {
+                "status": "False",
+                "message": "No such parameter!",
+            }
+        setattr(post, key, value)
+
+    return {
+        "status": "True",
+    }
 
 @app.post("/api/v1/posts/delete-post")
-async def delete_post():
-    pass
+async def delete_post(
+        post_id: int,
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+        client: AsyncClient = Depends(get_httpx),
+):
+    uid = request.headers.get("X-User-Id")
+
+    if uid == "-1":
+        return {
+            "status": "False",
+            "message": "Unauthorized!"
+        }
+
+    posts = await db.execute(select(PostDB).where(PostDB.id == int(post_id), PostDB.author_id == uid))
+    post = posts.scalar_one_or_none()
+
+    if not post:
+        return {
+            "status": "False",
+            "message": "No such post!"
+        }
+
+    await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{post.directory_name}",
+                        headers={"X-Key": MEDIA_KEY, "X-Directory": post.directory_name})
+
+    await db.delete(post)
+
 
 @app.post("/api/v1/posts/report-post")
 async def report_post():

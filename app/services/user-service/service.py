@@ -325,7 +325,7 @@ async def change_userdata(
     user = users.scalar_one_or_none()
 
     for key, value in changed_data.items():
-        if not key in cls.__table__.columns:
+        if not key in cls.__table__.columns and key not in ["id", "image", "email", "date_created"]:
             return {
                 "status": "False",
                 "message": "No such parameter!",

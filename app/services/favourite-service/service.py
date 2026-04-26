@@ -109,18 +109,57 @@ async def listen_deletion():
     except Exception as e:
         print(e)
 
+async def changes_favourites(pid, eng, changed_data: dict) -> dict:
+    cls = FavouriteDB
+    async with eng() as db:
+
+        posts = await db.execute(select(cls).where(cls.id == pid))
+        post = posts.scalar_one_or_none()
+
+        for key, value in changed_data.items():
+            if not key in cls.__table__.columns and key not in ["pid", "uid", "id"]:
+                return {
+                    "status": "False",
+                    "message": "No such parameter!",
+                }
+
+            setattr(post, key, value)
+
+    return {
+        "status": "True",
+    }
+
+async def deletion_favourites(pid, eng):
+    cls = FavouriteDB
+    async with eng() as db:
+        await db.execute(delete(cls).where(cls.pid == pid))
+        await db.commit()
+    return {
+        "status": "True",
+    }
+
+async def listen_changes():
+    try:
+        async with app.state.d_queue.iterator() as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    data = json.loads(message.body.decode())
+
+                    if data["action"] == "post_deletion":
+                        await deletion_favourites(data["pid"], app.state.db)
+
+                    if data["action"] == "post_changes":
+                        await changes_favourites(data["pid"], app.state.db, data["changes"])
+
+    except Exception as e:
+        print(e)
+
 
 async def main():
     await asyncio.gather(
         listen_deletion(),
+        listen_changes()
     )
-
-
-@app.post("/api/v1/favourites/changes")
-async def favourite_changes(
-        post_id: int = Form(...),
-):
-    cache.pop(post_id, None)
 
 
 @app.get("/api/v1/favourites/get-favourites")
@@ -192,8 +231,6 @@ async def add_favourite(
         db: AsyncSession,
         client: AsyncClient,
 ):
-
-# Remake all requests to post_service
 
     try:
         c = cache.get(post_id)
