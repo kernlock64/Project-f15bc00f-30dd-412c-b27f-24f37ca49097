@@ -143,4 +143,23 @@ ID_TO_PATH_MAP = {
     1911: "deti/kolyaski/kolyaski-3-v-1"
 }
 
-PATH_TO_ID = {v["full_path"]: k for k, v in CATEGORIES_CACHE.items()}
+PATH_TO_ID = {'avto-moto': 1, 'avto-moto/zapchasti-auto': 11, 'avto-moto/shiny-i-diski': 12,
+              'avto-moto/shiny-i-diski/shiny': 121, 'avto-moto/shiny-i-diski/diski': 122,
+              'avto-moto/shiny-i-diski/kolesa-v-sbore': 123, 'avto-moto/shiny-i-diski/kolpaki': 124,
+              'avto-moto/shiny-i-diski/prinadlezhnosti-dlya-koles': 125,
+              'avto-moto/shiny-i-diski/prinadlezhnosti-dlya-koles/kamery': 1251,
+              'avto-moto/shiny-i-diski/prinadlezhnosti-dlya-koles/metizy-kolesnye': 1252, 'avto-moto/auto-media': 16,
+              'avto-moto/signalizacii': 17, 'avto-moto/avtokresla': 18, 'avto-moto/autoliteratura': 20,
+              'avto-moto/moto': 13, 'avto-moto/moto/motozapchasti': 131, 'vodnaya-tekhnika': 2,
+              'vodnaya-tekhnika/zapchasti-voda': 21, 'cifrovaya-tekhnika': 3, 'cifrovaya-tekhnika/foto-video': 31,
+              'cifrovaya-tekhnika/telefony-gadzhety': 32, 'cifrovaya-tekhnika/kompyutery': 33,
+              'cifrovaya-tekhnika/kompyutery/noutbuki': 331, 'bytovaya-tekhnika': 4,
+              'bytovaya-tekhnika/holodilniki': 41, 'bytovaya-tekhnika/stiralnye-mashiny': 46, 'stroyka': 5,
+              'stroyka/santehnika': 51, 'stroyka/plitka': 54, 'stroyka/pilomaterialy': 511,
+              'stroyka/pilomaterialy/doska': 5111, 'stroyka/drevesnye-plity': 512,
+              'stroyka/drevesnye-plity/fanera': 5121, 'mebel': 7, 'mebel/divany': 71, 'mebel/kuhni': 74,
+              'odezhda-obuv': 9, 'odezhda-obuv/zhenskaya-odezhda': 91,
+              'odezhda-obuv/zhenskaya-odezhda/dlya-beremennyh': 911, 'odezhda-obuv/detskaya-odezhda': 93,
+              'zhivotnye': 14, 'zhivotnye/dlya-koshek': 142, 'zhivotnye/dlya-koshek/korm-koshki': 1421, 'deti': 19,
+              'deti/kolyaski': 191, 'deti/kolyaski/kolyaski-3-v-1': 1911
+              }

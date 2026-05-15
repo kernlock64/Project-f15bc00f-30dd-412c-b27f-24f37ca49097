@@ -180,6 +180,8 @@ services:
       - "DB_PASSWORD=${DB_PASSWORD}"
       - "DB_PORT=${DB_PORT}"
       - "DB_HOST=${DB_HOST}"
+      - "SECRET_KEY=${SECRET_KEY}"
+      - "MEDIA_KEY=${MEDIA_KEY}"
       - "SERVICE_NAME='admin_service'"
       - "PUB=${ADMIN_PUB}"
       - "SUB=${ADMIN_SUB}"

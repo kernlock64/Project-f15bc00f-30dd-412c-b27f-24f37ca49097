@@ -207,8 +207,13 @@ async def proxy(request: Request, call_next):
         return await call_next(request)
 
     token = request.cookies.get("access_t")
+
     if not token:
         token = request.query_params.get("r_token")
+
+    if not token:
+        token = request.headers.get("admin_t")
+
     public_key = os.getenv("PUBLIC_KEY").replace("\\n", "\n")
 
     if not token:
@@ -266,7 +271,7 @@ async def proxy(request: Request, call_next):
 
         headers = MutableHeaders(scope=request.scope)
 
-        headers['X-User-Id'] = payload["uid"]
+        headers['X-User-Id'] = str(payload["uid"])
         headers['X-Role'] = str(payload["role"])
 
         if hasattr(request, "_headers"):
@@ -310,6 +315,20 @@ async def proxy(request: Request, call_next):
         resp = await call_next(request)
         resp.headers["X-User-Id"] = u.uid
 
+        return resp
+
+    elif payload["thm"] == "admin":
+
+        headers = MutableHeaders(scope=request.scope)
+
+        headers['X-User-Id'] = "0"
+        headers['X-Role'] = "0"
+        headers['X-Scope'] = payload["dest"]
+
+        if hasattr(request, "_headers"):
+            delattr(request, "_headers")
+
+        resp = await call_next(request)
         return resp
 
     return {
@@ -373,6 +392,56 @@ async def user_confirm(
         "username": user.username,
     },
                       headers={"Content-Type": "application/json"})
+
+    return {"status": "True"}
+
+@app.post("/api/v1/admin-accept")
+async def user_confirm(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+):
+
+    public_key = os.getenv("PUBLIC_KEY").replace("\\n", "\n")
+
+    try:
+        payload = jwt.decode(request.headers.get("admin_t"), public_key, algorithms="ES256")
+
+    except jwt.InvalidSignatureError:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "status": "False",
+                "message": "Unauthorized!",
+            }
+        )
+
+    except jwt.ExpiredSignatureError:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "status": "False",
+                "message": "Unauthorized!",
+            }
+        )
+
+    if payload.get("dest") != "aa":
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "status": "False",
+                "message": "Unauthorized!",
+            }
+        )
+
+    data = request.headers.get("data")
+    uid = data["uid"]
+    users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
+    user = users.scalar_one_or_none()
+
+    if user.role == 2:
+        user.status = "ACTIVE"
+    await db.commit()
+
 
     return {"status": "True"}
 
@@ -936,8 +1005,6 @@ async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
         final_url = f"{target_url + path}?{request.url.query}"
     else:
         final_url = target_url + path
-
-    print(final_url)
 
     headers = {key: value for key, value in request.headers.items() if key.lower() not in exc}
 

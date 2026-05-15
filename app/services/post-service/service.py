@@ -2,6 +2,7 @@ import os
 import json
 from meilisearch_python_sdk import AsyncClient as MeiliClient
 
+from datetime import *
 from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body
 import httpx
 from sqlalchemy import *
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import aio_pika
 import asyncio
 from category_init import *
+import secrets
 
 
 class RabbitMQGateway:
@@ -150,6 +152,128 @@ async def main():
     )
 
 
+@app.post("/api/v1/posts/manip")
+async def manipulate(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+        data: dict = Body,
+        client: AsyncClient = Depends(get_httpx),
+
+):
+    if request.headers.get("X-User-Id") != '0' or request.headers.get("X-Role") != '0':
+        return {
+            "status": "False",
+            "message": "Unauthorized access!"
+        }
+
+    destination = request.headers.get("X-Scope")
+
+    if destination[1] != "p":
+        return {
+            "status": "False",
+            "message": "Incorrect scope!"
+        }
+
+    else:
+        try:
+            match destination[0]:
+
+                case "d":
+                    metadata = data["metadata"]
+                    post_id = metadata["post_id"]
+
+                    posts = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
+                    post = posts.scalar_one_or_none()
+
+                    if not post:
+                        return {
+                            "status": "False",
+                            "message": "No such post!"
+                        }
+
+                    await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{post.directory_name}",
+                                        headers={"X-Key": MEDIA_KEY, "X-Directory": post.directory_name})
+
+                    await db.delete(post)
+
+                    return {
+                        "status": "True",
+                    }
+
+                case "a":
+
+                    metadata = data["metadata"]
+                    posts = data["posts"]
+
+                    url = "http://user-service:5004/api/v1/users/user-check"
+
+                    uid = metadata["author_id"]
+                    price_list_name = metadata["price-list-name"]
+
+                    req = await client.get(url, headers={"User-Id": uid, "Role": "2"})
+                    if req.json()["status"] != "True":
+                        return {
+                            "status": "False",
+                            "message": "Something went wrong!"
+                        }
+
+                    for post in posts:
+                        p = PostDB(id=(lambda: ''.join(
+                            secrets.choice("abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789") for _ in
+                            range(19))), author_id=uid, title=post["title"],
+                                   posted_at=datetime.now(timezone.utc),
+                                   images=dict(post).get("images"),
+                                   directory_name=dict(post).get("image_dir"),
+                                   category_id=post["category_path"],
+                                   price_list_name=price_list_name,
+                                   coordinates=post["coordinates"],
+                                   )
+                        db.add(p)
+
+                    return {
+                        "status": "False",
+                        "message": "Something went wrong!"
+                    }
+
+                case "u":
+                    cls = PostDB
+
+                    metadata = data["metadata"]
+                    changed_data = data["changed_data"]
+
+                    post_id = metadata["post_id"]
+
+                    posts = await db.execute(select(cls).where(PostDB.id == int(post_id)))
+                    post = posts.scalar_one_or_none()
+
+                    if not post:
+                        return {
+                            "status": "False",
+                            "message": "No such post!",
+                        }
+
+                    for key, value in changed_data.items():
+                        if not key in cls.__table__.columns and key not in ["author_id", "price_list_id",
+                                                                            "date_created",
+                                                                            "posted_at",
+                                                                            "images"]:
+                            return {
+                                "status": "False",
+                                "message": "No such parameter!",
+                            }
+                        setattr(post, key, value)
+
+        except Exception:
+            return {
+                "status": "False",
+                "message": "Incorrect request!"
+            }
+
+        return {
+            "status": "True",
+        }
+
+
 @app.get("/api/v1/posts/{path:path}")
 async def get_posts(
         path: str,
@@ -230,7 +354,17 @@ async def add_post(
         db: AsyncSession = Depends(get_db),
         changed_data: dict = Body,
 ):
-    pass
+    role = request.headers.get("X-Role")
+
+    if role != "2":
+        return {
+            "status": "False",
+            "message": "Unauthorized!"
+        }
+
+    return {
+        "status": "False",
+    }
 
 
 @app.post("/api/v1/posts/changes-post")
@@ -240,6 +374,14 @@ async def changes_post(
         db: AsyncSession = Depends(get_db),
         changed_data: dict = Body,
 ):
+    role = request.headers.get("X-Role")
+
+    if role != "2":
+        return {
+            "status": "False",
+            "message": "Unauthorized!"
+        }
+
     uid = request.headers.get("X-User-Id")
     cls = PostDB
 
@@ -265,6 +407,7 @@ async def changes_post(
         "status": "True",
     }
 
+
 @app.post("/api/v1/posts/delete-post")
 async def delete_post(
         post_id: int,
@@ -272,6 +415,14 @@ async def delete_post(
         db: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
 ):
+    role = request.headers.get("X-Role")
+
+    if role != "2":
+        return {
+            "status": "False",
+            "message": "Unauthorized!"
+        }
+
     uid = request.headers.get("X-User-Id")
 
     if uid == "-1":
@@ -293,6 +444,10 @@ async def delete_post(
                         headers={"X-Key": MEDIA_KEY, "X-Directory": post.directory_name})
 
     await db.delete(post)
+
+    return {
+        "status": "True",
+    }
 
 
 @app.post("/api/v1/posts/report-post")

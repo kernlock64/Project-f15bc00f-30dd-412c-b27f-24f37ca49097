@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import aio_pika
 import asyncio
 
+
 class RabbitMQGateway:
 
     def __init__(self):
@@ -31,12 +32,14 @@ class RabbitMQGateway:
         if self.connection:
             await self.connection.close()
 
+
 MEDIA_KEY = os.getenv("MEDIA_KEY")
 
 limits = Limits(
     max_connections=1000,
     max_keepalive_connections=100,
 )
+
 
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
@@ -75,8 +78,10 @@ async def lifespan(cl: FastAPI):
         await rabbit.close()
         app.state.task.cancel()
 
+
 async def get_httpx(request: Request) -> httpx.AsyncClient:
     return request.app.state.http_client
+
 
 async def get_avatar():
     return app.state.avatar_cached
@@ -96,23 +101,19 @@ async def delete_user(
         role: str,
         eng,
 ):
-
     cls = CustomersDB if role == "1" else ProdDB
 
-
     async with eng() as db:
-
         users = await db.execute(select(cls).where(cls.id == uid))
         user = users.scalar_one_or_none()
         avatar = user.image
 
         await db.delete(user)
 
-
         client = app.state.http_client
 
         await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{avatar}",
-                                 headers={"X-Key": MEDIA_KEY})
+                            headers={"X-Key": MEDIA_KEY})
 
         await db.commit()
 
@@ -152,6 +153,7 @@ async def listen_deletion():
     except Exception as e:
         print(e)
 
+
 async def listen_changes():
     try:
         async with app.state.c_queue.iterator() as queue_iter:
@@ -172,6 +174,42 @@ async def main():
         listen_deletion(),
         listen_changes()
     )
+
+
+@app.post("/api/v1/users/manip")
+async def manipulate(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+        changed_data: dict = Body,
+):
+    pass
+
+@app.get("/api/v1/users/user-check")
+async def user_check(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+):
+    uid = request.headers.get("User-Id")
+    role = request.headers.get("Role")
+
+    if role == "1":
+
+        if await db.execute(exists(CustomersDB).where(CustomersDB.id == uid)):
+            return {
+                "status": "True",
+            }
+
+    if role == "2":
+
+        if await db.execute(exists(ProdDB).where(ProdDB.id == uid)):
+            return {
+                "status": "True",
+            }
+
+    return {
+        "status": "False",
+        "message": "Something went wrong!",
+    }
 
 
 @app.get("/api/v1/users/get-user")
@@ -232,6 +270,7 @@ async def get_user(
             "message": "Unknown error!",
         }
 
+
 @app.get("/api/v1/users/{uid}")
 async def get_user(
         request: Request,
@@ -239,27 +278,26 @@ async def get_user(
         db: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
 ):
-
     res = await client.get(f"http://post-service:5003/api/v1/posts/get-posts", headers=request.headers)
     if res.json()["status"] != "True":
         return {
-                "status": "False",
-                "message": "Something went wrong!",
+            "status": "False",
+            "message": "Something went wrong!",
         }
 
     users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
     user = users.scalar_one_or_none()
     return {
-            "id": str(user.id),
-            "name": str(user.name),
-            "email": str(user.email),
-            "image": str(user.image),
-            "date_created": str(user.date_created),
-            "full_name": str(user.full_name),
-            "telephone": str(user.telephone),
-            "description": str(user.description),
-            "delivery_description": str(user.delivery_description),
-            "posts": str(res.json()["posts"]),
+        "id": str(user.id),
+        "name": str(user.name),
+        "email": str(user.email),
+        "image": str(user.image),
+        "date_created": str(user.date_created),
+        "full_name": str(user.full_name),
+        "telephone": str(user.telephone),
+        "description": str(user.description),
+        "delivery_description": str(user.delivery_description),
+        "posts": str(res.json()["posts"]),
     }
 
 
@@ -372,3 +410,11 @@ async def change_avatar(
         return {
             "status": "True",
         }
+
+
+@app.post("/api/v1/users/support-request")
+async def report(
+        request: Request,
+        client: AsyncClient = Depends(get_httpx),
+):
+    pass
