@@ -44,7 +44,7 @@ services:
     restart: always
 
   db:
-    image: postgres:15
+    image: postgis/postgis:15-3.3-alpine
     container_name: URBAN-DB
     restart: always
     healthcheck:
@@ -168,8 +168,8 @@ services:
 
   admin-service:
     build: ./services/admin-service
-    expose:
-      - "${ADMIN_PORT}"
+    ports:
+      - "${ADMIN_PORT}:${ADMIN_PORT}"
     networks:
       - internal
     environment:
@@ -181,7 +181,7 @@ services:
       - "DB_PORT=${DB_PORT}"
       - "DB_HOST=${DB_HOST}"
       - "SECRET_KEY=${SECRET_KEY}"
-      - "MEDIA_KEY=${MEDIA_KEY}"
+      -  "MEDIA_KEY=${MEDIA_KEY}"
       - "SERVICE_NAME='admin_service'"
       - "PUB=${ADMIN_PUB}"
       - "SUB=${ADMIN_SUB}"

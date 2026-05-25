@@ -8,7 +8,7 @@ class TicketsDB(Base):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
     author_id: Mapped[str] = mapped_column(Text)
-    ticket_status = Mapped[int] = mapped_column(Integer)
+    ticket_status: Mapped[int] = mapped_column(Integer)
     theme: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     date_created: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

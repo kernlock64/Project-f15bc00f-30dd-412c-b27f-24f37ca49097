@@ -152,7 +152,7 @@ async def user_check(uid, eng):
         users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
         user = users.scalar_one_or_none()
 
-        if user.status == "PENDING":
+        if user.status != "ACTIVE":
             await db.delete(user)
         await db.commit()
 
@@ -167,7 +167,10 @@ async def listen_check():
 
                     await user_check(uid, app.state.db)
     except Exception as e:
-        print(e)
+        return {
+            "status": "False",
+            "message": str(e)
+        }
 
 
 async def main():
@@ -191,7 +194,6 @@ ROUTES = {
     "users": "http://user-service:5004",
     "posts": "http://post-service:5003",
     "favourites": "http://favourite-service:5005",
-    "admin": "http://admin-service:5006",
 }
 
 ROUTES_NA = {
@@ -201,7 +203,6 @@ ROUTES_NA = {
 
 @app.middleware("http")
 async def proxy(request: Request, call_next):
-    print(request.url.path)
     if request.url.path in {"/api/v1/registration", "/api/v1/login", "/api/v1/refresh", "/api/v1/forgot-password",
                             "/api/v1/user-confirm"}:
         return await call_next(request)
@@ -396,7 +397,7 @@ async def user_confirm(
     return {"status": "True"}
 
 @app.post("/api/v1/admin-accept")
-async def user_confirm(
+async def user_confirm_a(
         request: Request,
         db: AsyncSession = Depends(get_db),
 ):

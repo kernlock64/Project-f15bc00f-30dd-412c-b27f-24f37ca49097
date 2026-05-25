@@ -1,6 +1,8 @@
 import os
 import json
+from geoalchemy2 import WKTElement
 from meilisearch_python_sdk import AsyncClient as MeiliClient
+from meilisearch_python_sdk.models.settings import MeilisearchSettings
 
 from datetime import *
 from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body
@@ -51,25 +53,41 @@ async def lifespan(cl: FastAPI):
     app.state.db = factory
     meili_engine = MeiliClient(url=MEILI_URL, api_key=MEILI_KEY)
 
-    index = meili_engine.index("products")
-    await index.update_filterable_attributes([
-        "price",
-        "category_id",
-        "attributes",
-    ])
-    await index.update_searchable_attributes([
-        "title",
-        "description"
-    ])
-    await index.update_displayed_attributes(["id", "title", "price", "image_url", "categories"])
-    await index.update_ranking_rules([
-        "words",
-        "typo",
-        "proximity",
-        "attribute",
-        "sort",
-        "exactness"
-    ])
+    index = meili_engine.index("posts")
+
+    task = await index.update_settings(MeilisearchSettings(
+        filterable_attributes=[
+            "price",
+            "category_id",
+            "attributes.*",
+            "author_id"
+        ],
+        searchable_attributes=[
+            "title",
+            "description",
+        ],
+        displayed_attributes=[
+            "id",
+            "title",
+            "price",
+            "image_url",
+            "category_id",
+            "author_id",
+            "author_name",
+            "author_image",
+            "attributes",
+        ],
+        ranking_rules=[
+            "words",
+            "typo",
+            "proximity",
+            "attribute",
+            "sort",
+            "exactness"
+        ]
+    ))
+
+    await meili_engine.wait_for_task(task.task_uid)
 
     rabbit = RabbitMQGateway()
     await rabbit.connect()
@@ -158,7 +176,7 @@ async def manipulate(
         db: AsyncSession = Depends(get_db),
         data: dict = Body,
         client: AsyncClient = Depends(get_httpx),
-
+        meili: MeiliClient = Depends(get_meili),
 ):
     if request.headers.get("X-User-Id") != '0' or request.headers.get("X-Role") != '0':
         return {
@@ -202,6 +220,7 @@ async def manipulate(
 
                 case "a":
 
+                    data = data["metadata"]
                     metadata = data["metadata"]
                     posts = data["posts"]
 
@@ -217,23 +236,75 @@ async def manipulate(
                             "message": "Something went wrong!"
                         }
 
-                    for post in posts:
-                        p = PostDB(id=(lambda: ''.join(
-                            secrets.choice("abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789") for _ in
-                            range(19))), author_id=uid, title=post["title"],
-                                   posted_at=datetime.now(timezone.utc),
-                                   images=dict(post).get("images"),
-                                   directory_name=dict(post).get("image_dir"),
-                                   category_id=post["category_path"],
-                                   price_list_name=price_list_name,
-                                   coordinates=post["coordinates"],
-                                   )
-                        db.add(p)
+                    dat = req.json()
+                    author_name = dat["author_name"]
+                    author_image = dat["author_image"]
 
-                    return {
-                        "status": "False",
-                        "message": "Something went wrong!"
-                    }
+                    if metadata["is_images"] == "t":
+                        for post in posts:
+                            post_id = str((lambda: ''.join(
+                                secrets.choice("abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789") for _ in
+                                range(19)))())
+
+                            p = PostDB(id=post_id, author_id=uid, title=post["title"],
+                                       posted_at=datetime.now(timezone.utc),
+                                       description=post["description"],
+                                       images=dict(post).get("images"),
+                                       directory_name=dict(post).get("image_dir"),
+                                       category_id=post["category_path"],
+                                       price_list_name=price_list_name,
+                                       coordinates=WKTElement(
+                                           f"POINT({post["coordinates"][0]} {post["coordinates"][1]})", srid=4326),
+                                       price=int(post["price"]),
+                                       )
+                            db.add(p)
+                            await db.commit()
+
+                            client = meili.index("posts")
+
+                            await client.add_documents([
+                                {"id": post_id, "title": post["title"], "price": post["price"],
+                                 "image_url": str(
+                                     "http://media-service:5001/api/v1/media/get-image/" + post['title_image']),
+                                 "categories":
+                                     post["category_path"],
+                                 "author_id": uid,
+                                 "author_name": author_name,
+                                 "author_image": author_image,
+                                 "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
+                                 }
+                            ])
+
+                    elif metadata["is_images"] == "f":
+                        for post in posts:
+                            post_id = str((lambda: ''.join(
+                                secrets.choice("abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789") for _ in
+                                range(19)))())
+
+                            p = PostDB(id=post_id, author_id=uid, title=post["title"],
+                                       posted_at=datetime.now(timezone.utc),
+                                       description=post["description"],
+                                       category_id=post["category_path"],
+                                       price_list_name=price_list_name,
+                                       coordinates=WKTElement(
+                                           f"POINT({post["coordinates"][0]} {post["coordinates"][1]})", srid=4326),
+                                       price=int(post["price"]),
+                                       )
+                            db.add(p)
+                            await db.commit()
+
+                            client = meili.index("posts")
+
+                            await client.add_documents([
+                                {"id": post_id, "title": post["title"], "price": post["price"],
+                                 "categories":
+                                     post["category_path"],
+                                 "author_id": uid,
+                                 "author_name": author_name,
+                                 "author_image": author_image,
+                                 "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
+                                 }
+                            ])
 
                 case "u":
                     cls = PostDB
@@ -263,49 +334,14 @@ async def manipulate(
                             }
                         setattr(post, key, value)
 
-        except Exception:
+        except Exception as e:
             return {
                 "status": "False",
-                "message": "Incorrect request!"
+                "message": str(e)
             }
 
         return {
             "status": "True",
-        }
-
-
-@app.get("/api/v1/posts/{path:path}")
-async def get_posts(
-        path: str,
-):
-    category_id = PATH_TO_ID.get(path)
-
-    if not category_id:
-        return {
-            "status": "False",
-            "message": "Страницы не существует!"
-        }
-
-    category = CATEGORIES_CACHE.get(category_id)
-
-    if category["is_leaf"]:
-        return {
-            "status": "True",
-            "category_id": category_id,
-            "title": category["name"],
-            "metadata": {
-                "api_url": "/api/v1/posts/search",
-                "base_filter": f"category_id = {category_id}",
-                "index": "posts",
-            }
-        }
-
-    else:
-        cat = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == category_id]
-        return {
-            "status": "True",
-            "categories": cat,
-
         }
 
 
@@ -453,3 +489,38 @@ async def delete_post(
 @app.post("/api/v1/posts/report-post")
 async def report_post():
     pass
+
+
+@app.get("/api/v1/posts/{path:path}")
+async def get_posts(
+        path: str,
+):
+    category_id = PATH_TO_ID.get(path)
+
+    if not category_id:
+        return {
+            "status": "False",
+            "message": "Страницы не существует!"
+        }
+
+    category = CATEGORIES_CACHE.get(category_id)
+
+    if category["is_leaf"]:
+        return {
+            "status": "True",
+            "category_id": category_id,
+            "title": category["name"],
+            "metadata": {
+                "api_url": "/api/v1/posts/search",
+                "base_filter": f"category_id = {category_id}",
+                "index": "posts",
+            }
+        }
+
+    else:
+        cat = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == category_id]
+        return {
+            "status": "True",
+            "categories": cat,
+
+        }

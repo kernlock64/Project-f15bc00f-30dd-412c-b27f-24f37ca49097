@@ -11,34 +11,35 @@ MEDIA_KEY = os.getenv('MEDIA_KEY')
 posts = []
 response = {}
 
-PATH_TO_ID = {
-              11: 'avto-moto/zapchasti-auto', 121: 'avto-moto/shiny-i-diski/shiny',
-              122: 'avto-moto/shiny-i-diski/diski', 123: 'avto-moto/shiny-i-diski/kolesa-v-sbore',
-              124: 'avto-moto/shiny-i-diski/kolpaki', 1251: 'avto-moto/shiny-i-diski/prinadlezhnosti-dlya-koles/kamery',
-              1252: 'avto-moto/shiny-i-diski/prinadlezhnosti-dlya-koles/metizy-kolesnye', 16: 'avto-moto/auto-media',
-              17: 'avto-moto/signalizacii', 18: 'avto-moto/avtokresla', 20: 'avto-moto/autoliteratura',
-              131: 'avto-moto/moto/motozapchasti', 21: 'vodnaya-tekhnika/zapchasti-voda',
-              31: 'cifrovaya-tekhnika/foto-video', 32: 'cifrovaya-tekhnika/telefony-gadzhety',
-              331: 'cifrovaya-tekhnika/kompyutery/noutbuki', 41: 'bytovaya-tekhnika/holodilniki',
-              46: 'bytovaya-tekhnika/stiralnye-mashiny', 51: 'stroyka/santehnika', 54: 'stroyka/plitka',
-              5111: 'stroyka/pilomaterialy/doska', 5121: 'stroyka/drevesnye-plity/fanera', 71: 'mebel/divany',
-              74: 'mebel/kuhni', 91: 'odezhda-obuv/zhenskaya-odezhda',
-              911: 'odezhda-obuv/zhenskaya-odezhda/dlya-beremennyh', 93: 'odezhda-obuv/detskaya-odezhda',
-              1421: 'zhivotnye/dlya-koshek/korm-koshki', 1911: 'deti/kolyaski/kolyaski-3-v-1'
-              }
-
+PATH_TO_ID = {'avto-moto/zapchasti-auto': 11, 'avto-moto/shiny-i-diski/shiny': 121,
+              'avto-moto/shiny-i-diski/diski': 122,
+              'avto-moto/shiny-i-diski/kolesa-v-sbore': 123, 'avto-moto/shiny-i-diski/kolpaki': 124,
+              'avto-moto/shiny-i-diski/prinadlezhnosti-dlya-koles/kamery': 1251,
+              'avto-moto/shiny-i-diski/prinadlezhnosti-dlya-koles/metizy-kolesnye': 1252, 'avto-moto/auto-media': 16,
+              'avto-moto/signalizacii': 17, 'avto-moto/avtokresla': 18, 'avto-moto/autoliteratura': 20,
+              'avto-moto/moto/motozapchasti': 131, 'vodnaya-tekhnika/zapchasti-voda': 21,
+              'cifrovaya-tekhnika/foto-video': 31,
+              'cifrovaya-tekhnika/telefony-gadzhety': 32, 'cifrovaya-tekhnika/kompyutery/noutbuki': 331,
+              'bytovaya-tekhnika/holodilniki': 41, 'bytovaya-tekhnika/stiralnye-mashiny': 46, 'stroyka/santehnika': 51,
+              'stroyka/plitka': 54, 'stroyka/pilomaterialy/doska': 5111, 'stroyka/drevesnye-plity/fanera': 5121,
+              'mebel/divany': 71,
+              'mebel/kuhni': 74, 'odezhda-obuv/zhenskaya-odezhda': 91,
+              'odezhda-obuv/zhenskaya-odezhda/dlya-beremennyh': 911,
+              'odezhda-obuv/detskaya-odezhda': 93, 'zhivotnye/dlya-koshek/korm-koshki': 1421,
+              'deti/kolyaski/kolyaski-3-v-1': 1911}
 
 
 def initial_proceed(filename):
     try:
         with zipfile.ZipFile(f'temp/{filename}', 'r') as z:
-            with z.open(f'{filename.split(".")[0]}/init.csv') as f:
+            with z.open('init.csv') as f:
                 text_file = io.TextIOWrapper(f, encoding='utf-8')
                 reader = csv.DictReader(text_file)
                 for row in reader:
                     metadata = {
                         'price-list-name': row['price-list-name'],
                         'author_id': row['author_id'],
+                        'is_images': row['is-images'],
                     }
 
                 response["metadata"] = metadata
@@ -64,21 +65,22 @@ def initial_proceed(filename):
 
 
 async def with_images_proceed(
-                        filename,
-                        client: AsyncClient = get_httpx()
-                        ):
+        filename,
+        client: AsyncClient = get_httpx()
+):
     try:
         images = []
         images_dir = str(uuid.uuid4())
         with zipfile.ZipFile(f'temp/{filename}', 'r') as z:
-            with z.open(f'{filename.split(".")[0]}/posts.csv') as f:
+            with z.open('posts.csv') as f:
                 text_file = io.TextIOWrapper(f, encoding='utf-8')
                 reader = csv.DictReader(text_file)
                 for row in reader:
                     post = {
                         'title': row['title'],
                         'description': row['description'],
-                        'coordinates': f"POINT({float(row['coordinates'].split(',')[0]), float(row['coordinates'].split(',')[1])})",
+                        'coordinates': [float(row['coordinates'].split(',')[0]),
+                                        float(row['coordinates'].split(',')[1])],
                         'category_path': PATH_TO_ID[row['category_path']],
                         'images_dir': images_dir,
                         'images': images,
@@ -112,7 +114,7 @@ async def with_images_proceed(
                                     "message": "Error adding image",
                                 }
 
-                posts.append(post)
+                    posts.append(post)
 
         return response
 
@@ -126,17 +128,20 @@ async def with_images_proceed(
 def without_images_proceed(filename):
     try:
         with zipfile.ZipFile(f'temp/{filename}', 'r') as z:
-            with z.open(f'{filename.split(".")[0]}/posts.csv') as f:
+            with z.open('posts.csv') as f:
                 text_file = io.TextIOWrapper(f, encoding='utf-8')
                 reader = csv.DictReader(text_file)
                 for row in reader:
                     post = {
                         'title': row['title'],
                         'description': row['description'],
-                        'coordinates': f"POINT({float(row['coordinates'].split(',')[0]), float(row['coordinates'].split(',')[1])})",
+                        'coordinates': [float(row['coordinates'].split(',')[0]),
+                                        float(row['coordinates'].split(',')[1])],
                         'category_path': PATH_TO_ID[row['category_path']],
+                        'price': row['price'],
+                        'attributes': row['attributes'],
                     }
-                posts.append(post)
+                    posts.append(post)
 
         return response
 

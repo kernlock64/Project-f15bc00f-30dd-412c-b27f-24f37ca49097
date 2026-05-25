@@ -201,9 +201,13 @@ async def user_check(
 
     if role == "2":
 
-        if await db.execute(exists(ProdDB).where(ProdDB.id == uid)):
+        users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
+        user = users.scalar_one_or_none()
+        if user:
             return {
                 "status": "True",
+                "author_name": str(user.name),
+                "author_image": str(user.image),
             }
 
     return {
@@ -242,7 +246,8 @@ async def get_user(
         }
     if role == "2":
 
-        res2 = await client.get(f"http://post-service:5003/api/v1/posts/get-posts", headers=request.headers)
+        res2 = await client.get(f"http://post-service:5003/api/v1/posts/search?fil=author_id={uid}",
+                           headers=request.headers)
         if res2.json()["status"] != "True":
             return {
                 "status": "False",
@@ -278,7 +283,8 @@ async def get_user(
         db: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
 ):
-    res = await client.get(f"http://post-service:5003/api/v1/posts/get-posts", headers=request.headers)
+    res = await client.get(f"http://post-service:5003/api/v1/posts/search?fil=author_id={uid}",
+                           headers=request.headers)
     if res.json()["status"] != "True":
         return {
             "status": "False",
@@ -363,13 +369,14 @@ async def change_userdata(
     user = users.scalar_one_or_none()
 
     for key, value in changed_data.items():
-        if not key in cls.__table__.columns and key not in ["id", "image", "email", "date_created"]:
+        if not key in cls.__table__.columns.keys() or key in ["id", "image", "email", "date_created"]:
             return {
                 "status": "False",
                 "message": "No such parameter!",
             }
         setattr(user, key, value)
 
+        await db.commit()
     return {
         "status": "True",
     }

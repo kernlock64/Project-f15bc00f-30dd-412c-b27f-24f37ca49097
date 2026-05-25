@@ -2,5 +2,5 @@ CREATE DATABASE auth_db;
 CREATE DATABASE post_db;
 CREATE DATABASE user_db;
 CREATE DATABASE favourite_db;
-CREATE DATABASE media_db;
+CREATE DATABASE admin_db;
 CREATE DATABASE mail_db;
