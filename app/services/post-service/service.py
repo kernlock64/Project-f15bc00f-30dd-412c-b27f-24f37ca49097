@@ -224,6 +224,8 @@ async def manipulate(
                     metadata = data["metadata"]
                     posts = data["posts"]
 
+                    print(posts)
+
                     url = "http://user-service:5004/api/v1/users/user-check"
 
                     uid = metadata["author_id"]

@@ -127,7 +127,8 @@ async def push(
         with open(f'temp/{name}.zip', 'wb') as f:
             f.write(data)
 
-        data = await asyncio.to_thread(initial_proceed, f"{name}.zip")
+        data = await initial_proceed(f"{name}.zip")
+        print(data)
 
         res = await send_request("ap", data)
 

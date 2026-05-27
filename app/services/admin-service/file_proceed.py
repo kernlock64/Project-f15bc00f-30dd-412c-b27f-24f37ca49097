@@ -8,9 +8,6 @@ import os
 
 MEDIA_KEY = os.getenv('MEDIA_KEY')
 
-posts = []
-response = {}
-
 PATH_TO_ID = {'avto-moto/zapchasti-auto': 11, 'avto-moto/shiny-i-diski/shiny': 121,
               'avto-moto/shiny-i-diski/diski': 122,
               'avto-moto/shiny-i-diski/kolesa-v-sbore': 123, 'avto-moto/shiny-i-diski/kolpaki': 124,
@@ -29,8 +26,10 @@ PATH_TO_ID = {'avto-moto/zapchasti-auto': 11, 'avto-moto/shiny-i-diski/shiny': 1
               'deti/kolyaski/kolyaski-3-v-1': 1911}
 
 
-def initial_proceed(filename):
+async def initial_proceed(filename):
     try:
+        posts = []
+        response = {}
         with zipfile.ZipFile(f'temp/{filename}', 'r') as z:
             with z.open('init.csv') as f:
                 text_file = io.TextIOWrapper(f, encoding='utf-8')
@@ -46,10 +45,10 @@ def initial_proceed(filename):
                 response["posts"] = posts
 
                 if row['is-images'] == 't':
-                    return with_images_proceed(filename)
+                    return await with_images_proceed(filename, posts, response)
 
                 if row['is-images'] == 'f':
-                    return without_images_proceed(filename)
+                    return await without_images_proceed(filename, posts, response)
 
                 else:
                     return {
@@ -66,10 +65,12 @@ def initial_proceed(filename):
 
 async def with_images_proceed(
         filename,
-        client: AsyncClient = get_httpx()
+        posts,
+        response
 ):
     try:
         images = []
+        client = await get_httpx()
         images_dir = str(uuid.uuid4())
         with zipfile.ZipFile(f'temp/{filename}', 'r') as z:
             with z.open('posts.csv') as f:
@@ -84,22 +85,34 @@ async def with_images_proceed(
                         'category_path': PATH_TO_ID[row['category_path']],
                         'images_dir': images_dir,
                         'images': images,
+                        'price': row['price'],
+                        'attributes': row['attributes'],
 
                     }
+
                     imgs = row['images'].split(',')
 
+                    if not row['title_image'] in imgs:
+                        return {
+                            "status": "False",
+                            "message": "Something went wrong!"
+                        }
+
                     for m in imgs:
-                        with z.open(f'{filename.split(".")[0]}/imgs/{m}', "rb") as k:
+                        with z.open(f'imgs/{m}', "r") as k:
 
                             name = str(uuid.uuid4())
 
+                            if str(m) == row['title_image']:
+                                post["title_image"] = name
+
                             async def read_file():
-                                while chunk := await k.read(64 * 1024):
+                                while chunk := k.read(64 * 1024):
                                     yield chunk
 
                             req = client.build_request(
                                 method="POST",
-                                url=f"http://media-service:5001/api/v1/media/add-image/{filename}?p_directory={images_dir}",
+                                url=f"http://media-service:5001/api/v1/media/add-image/{name}?p_directory={images_dir}",
                                 headers={"X-Key": MEDIA_KEY, "X-Name": name},
                                 content=read_file(),
                             )
@@ -114,18 +127,18 @@ async def with_images_proceed(
                                     "message": "Error adding image",
                                 }
 
-                    posts.append(post)
+                posts.append(post)
 
         return response
 
     except Exception as e:
         return {
             "status": "False",
-            "message": "Something went wrong!"
+            "message": str(e)
         }
 
 
-def without_images_proceed(filename):
+async def without_images_proceed(filename, posts, response):
     try:
         with zipfile.ZipFile(f'temp/{filename}', 'r') as z:
             with z.open('posts.csv') as f:
@@ -141,7 +154,7 @@ def without_images_proceed(filename):
                         'price': row['price'],
                         'attributes': row['attributes'],
                     }
-                    posts.append(post)
+                posts.append(post)
 
         return response
 
