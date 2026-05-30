@@ -224,6 +224,10 @@ services:
       - "${MEDIA_PORT}:${MEDIA_PORT}"
     networks:
       - internal
+    volumes:
+      - ./services/media-service:/service
+      - /app/venv/
+      - /app/__pycache__/
     environment:
       - "PYTHONPATH=."
       - "SERVICE_PORT=${MEDIA_PORT}"

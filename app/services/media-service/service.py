@@ -27,7 +27,7 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 
 app = FastAPI(lifespan=lifespan)
 
-@app.get("/api/v1/media/get-image/{filename}")
+@app.get("/api/v1/media/get-image/{filename:path}")
 async def get_image(filename: str,
                     request: Request,
               client: AsyncClient = Depends(get_httpx)):

@@ -70,7 +70,7 @@ async def lifespan(cl: FastAPI):
             "id",
             "title",
             "price",
-            "image_url",
+            "title_image",
             "category_id",
             "author_id",
             "author_name",
@@ -252,7 +252,7 @@ async def manipulate(
                                        posted_at=datetime.now(timezone.utc),
                                        description=post["description"],
                                        images=dict(post).get("images"),
-                                       directory_name=dict(post).get("image_dir"),
+                                       directory_name=dict(post).get("images_dir"),
                                        category_id=post["category_path"],
                                        price_list_name=price_list_name,
                                        coordinates=WKTElement(
@@ -266,9 +266,8 @@ async def manipulate(
 
                             await client.add_documents([
                                 {"id": post_id, "title": post["title"], "price": post["price"],
-                                 "image_url": str(
-                                     "http://media-service:5001/api/v1/media/get-image/" + post['title_image']),
-                                 "categories":
+                                 "title_image": str(str(post["images_dir"]) + "/" + str(post['title_image'])),
+                                 "category_id":
                                      post["category_path"],
                                  "author_id": uid,
                                  "author_name": author_name,
@@ -299,14 +298,14 @@ async def manipulate(
 
                             await client.add_documents([
                                 {"id": post_id, "title": post["title"], "price": post["price"],
-                                 "categories":
+                                 "category_id":
                                      post["category_path"],
                                  "author_id": uid,
                                  "author_name": author_name,
                                  "author_image": author_image,
                                  "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
                                  }
-                            ])
+                            ], primary_key="id")
 
                 case "u":
                     cls = PostDB
@@ -326,10 +325,10 @@ async def manipulate(
                         }
 
                     for key, value in changed_data.items():
-                        if not key in cls.__table__.columns and key not in ["author_id", "price_list_id",
+                        if not key in cls.__table__.columns and key not in ["author_id", "price_list_name",
                                                                             "date_created",
                                                                             "posted_at",
-                                                                            "images"]:
+                                                                            "images", "id"]:
                             return {
                                 "status": "False",
                                 "message": "No such parameter!",
@@ -489,8 +488,40 @@ async def delete_post(
 
 
 @app.post("/api/v1/posts/report-post")
-async def report_post():
-    pass
+async def report_post(
+        request: Request,
+        post_id: str,
+        data: str,
+        db: AsyncSession = Depends(get_db),
+        client: AsyncClient = Depends(get_httpx),
+):
+    uid = request.headers.get("X-User-Id")
+
+    if len(data) > 1500:
+        return {
+            "status": "False",
+            "message": "Something went wrong!",
+        }
+
+    if await db.execute(exists(PostDB).where(PostDB.id == uid)):
+        metadata = {
+            "uid": uid,
+            "role": request.headers.get("X-Role"),
+            "post_id": post_id,
+            "date_created": datetime.now(timezone.utc),
+            "data": data,
+        }
+
+        await client.post("http://admin-service:5006/api/v1/management/web-health/request", data=metadata)
+
+        return {
+            "status": "True",
+        }
+
+    return {
+        "status": "False",
+        "message": "Something went wrong!",
+    }
 
 
 @app.get("/api/v1/posts/{path:path}")

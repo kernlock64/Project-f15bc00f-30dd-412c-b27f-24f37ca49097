@@ -3,7 +3,7 @@ import io
 import csv
 import uuid
 from service import get_httpx
-from httpx import AsyncClient
+from fastapi import Response
 import os
 
 MEDIA_KEY = os.getenv('MEDIA_KEY')
@@ -101,7 +101,7 @@ async def with_images_proceed(
                     for m in imgs:
                         with z.open(f'imgs/{m}', "r") as k:
 
-                            name = str(uuid.uuid4())
+                            name = str(uuid.uuid4()) + '.png'
 
                             if str(m) == row['title_image']:
                                 post["title_image"] = name
@@ -112,7 +112,7 @@ async def with_images_proceed(
 
                             req = client.build_request(
                                 method="POST",
-                                url=f"http://media-service:5001/api/v1/media/add-image/{name}?p_directory={images_dir}",
+                                url=f"http://media-service:5001/api/v1/media/add-image/png?p_directory={images_dir}",
                                 headers={"X-Key": MEDIA_KEY, "X-Name": name},
                                 content=read_file(),
                             )

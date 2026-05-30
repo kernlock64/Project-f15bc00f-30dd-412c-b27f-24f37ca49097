@@ -60,15 +60,17 @@ async def send_request(
     dest_url = {
         "u": "http://auth-service:5000/api/v1/users/manip",
         "p": "http://auth-service:5000/api/v1/posts/manip",
-        "a": "http://auth-service:5000/api/v1/posts/manip",
+        "a": "http://auth-service:5000/api/v1/manip",
     }
     if dest not in [
         "dp",
         "pp",
         "ap",
-        "du",
+        "da",
         "pu",
-        "aa",
+        "va",
+        "gu",
+        "au",
     ]:
         return {
             "Invalid destination!"
@@ -128,11 +130,8 @@ async def push(
             f.write(data)
 
         data = await initial_proceed(f"{name}.zip")
-        print(data)
 
         res = await send_request("ap", data)
-
-        print(res.json())
 
         if res.json().get("status") != "True":
             return JSONResponse(
@@ -151,16 +150,13 @@ async def push(
             "message": str(e)
         }
 
-
-@app.get("/api/v1/management/web-health/get-ps")
-async def get_posts():
-    pass
-
-
 @app.get("/api/v1/management/web-health/get-p")
 async def get_post():
     pass
 
+@app.get("/api/v1/management/web-health/get-ps")
+async def get_posts():
+    pass
 
 @app.get("/api/v1/management/web-health/get-u")
 async def get_user():
@@ -179,13 +175,8 @@ async def manipulate(
     pass
 
 
-@app.post("/api/v1/management/web-health/request-a")
+@app.post("/api/v1/management/web-health/request")
 async def request():
-    pass
-
-
-@app.get("/api/v1/management/web-health/request-g")
-async def requests_get():
     pass
 
 

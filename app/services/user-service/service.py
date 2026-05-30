@@ -180,9 +180,68 @@ async def main():
 async def manipulate(
         request: Request,
         db: AsyncSession = Depends(get_db),
-        changed_data: dict = Body,
+        data: dict = Body,
 ):
-    pass
+    if request.headers.get("X-User-Id") != '0' or request.headers.get("X-Role") != '0':
+        return {
+            "status": "False",
+            "message": "Unauthorized access!"
+        }
+
+    destination = request.headers.get("X-Scope")
+
+    if destination[1] != "u":
+        return {
+            "status": "False",
+            "message": "Incorrect scope!"
+        }
+
+    else:
+        try:
+            match destination[0]:
+
+                case "u":
+                    metadata = data["metadata"]
+                    changed_data = data["changed_data"]
+
+                    cls = CustomersDB if metadata["role"] == "1" else ProdDB
+
+                    user_id = metadata["user_id"]
+
+                    users = await db.execute(select(cls).where(cls.id == str(user_id)))
+                    user = users.scalar_one_or_none()
+
+                    if not user:
+                        return {
+                            "status": "False",
+                            "message": "No such user!",
+                        }
+
+                    for key, value in changed_data.items():
+                        if not key in cls.__table__.columns and key not in ["id", "image", "email", "date_created"]:
+                            return {
+                                "status": "False",
+                                "message": "No such parameter!",
+                            }
+                        setattr(user, key, value)
+
+                case "g":
+                    metadata = data["metadata"]
+
+                    user_id = str(metadata["user_id"])
+
+                case "a":
+                    pass
+
+        except Exception as e:
+            return {
+                "status": "False",
+                "message": str(e)
+            }
+
+        return {
+            "status": "True",
+        }
 
 @app.get("/api/v1/users/user-check")
 async def user_check(
@@ -276,7 +335,7 @@ async def get_user(
         }
 
 
-@app.get("/api/v1/users/{uid}")
+@app.get("/api/v1/users/producers/{uid}")
 async def get_user(
         request: Request,
         uid: str,
@@ -422,6 +481,26 @@ async def change_avatar(
 @app.post("/api/v1/users/support-request")
 async def report(
         request: Request,
+        data: str,
         client: AsyncClient = Depends(get_httpx),
 ):
-    pass
+    uid = request.headers.get("X-User-Id")
+
+    if len(data) > 1500:
+        return {
+            "status": "False",
+            "message": "Something went wrong!",
+        }
+
+    metadata = {
+        "uid": uid,
+        "role": request.headers.get("X-Role"),
+        "date_created": datetime.now(timezone.utc),
+        "data": data,
+    }
+
+    await client.post("http://admin-service:5006/api/v1/management/web-health/request", data=metadata)
+
+    return {
+            "status": "True",
+        }

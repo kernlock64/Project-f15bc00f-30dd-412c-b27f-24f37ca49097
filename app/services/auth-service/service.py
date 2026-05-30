@@ -1,6 +1,6 @@
 import uuid
 import json
-from fastapi import FastAPI, Depends, Request, Response, Form, status, BackgroundTasks
+from fastapi import FastAPI, Depends, Request, Response, Form, status, BackgroundTasks, Body
 from fastapi.responses import JSONResponse
 from phonenumbers import NumberParseException
 from starlette.responses import StreamingResponse
@@ -396,12 +396,12 @@ async def user_confirm(
 
     return {"status": "True"}
 
+
 @app.post("/api/v1/admin-accept")
 async def user_confirm_a(
         request: Request,
         db: AsyncSession = Depends(get_db),
 ):
-
     public_key = os.getenv("PUBLIC_KEY").replace("\\n", "\n")
 
     try:
@@ -442,7 +442,6 @@ async def user_confirm_a(
     if user.role == 2:
         user.status = "ACTIVE"
     await db.commit()
-
 
     return {"status": "True"}
 
@@ -485,6 +484,107 @@ async def check_data(password, email, username, session: AsyncSession):
         return {"status": "False", "message": 'E-mail недействителен!'}
 
     return {"status": "True", }
+
+
+@app.post("/api/v1/manip")
+async def manipulate(
+        request: Request,
+        background_tasks: BackgroundTasks,
+        db: AsyncSession = Depends(get_db),
+        data: dict = Body,
+        client: AsyncClient = Depends(get_db),
+):
+    if request.headers.get("X-User-Id") != '0' or request.headers.get("X-Role") != '0':
+        return {
+            "status": "False",
+            "message": "Unauthorized access!"
+        }
+
+    destination = request.headers.get("X-Scope")
+
+    if destination[1] != "a":
+        return {
+            "status": "False",
+            "message": "Incorrect scope!"
+        }
+
+    else:
+        try:
+            match destination[0]:
+
+                case "v":
+                    metadata = data["metadata"]
+                    cls = AuthDB(metadata)
+
+                    user_id = metadata["user_id"]
+
+                    users = await db.execute(select(cls).where(cls.uid == str(user_id)))
+                    user = users.scalar_one_or_none()
+
+                    if not user:
+                        return {
+                            "status": "False",
+                            "message": "No such user!",
+                        }
+
+                    user.status = "ACTIVE"
+
+                    templ_data = {
+                        "email_to": user.email,
+                        "username": user.username,
+                    }
+
+                    await db.commit()
+
+                    await client.post("http://mail-service:5002/api/v1/mail/on-acceptance-provider", json=templ_data,
+                                      headers={"Content-Type": "application/json"})
+
+                    return {
+                        "status": "True",
+                    }
+
+                case "d":
+
+                    metadata = data["metadata"]
+                    uid = str(metadata["user_id"])
+                    role = str(int(metadata["role"]))
+
+                    background_tasks.add_task(deletion_task, uid, role)
+
+                    await db.execute(
+                        update(TokenDB)
+                        .where(TokenDB.uid == uid)
+                        .values(is_expired=True))
+
+                    users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
+                    user = users.scalar_one_or_none()
+                    await db.delete(user)
+                    await db.commit()
+
+                    templ_data = {
+                        "email_to": user.email,
+                        "username": user.username,
+                    }
+
+                    resp = await client.post("http://mail-service:5002/api/v1/mail/on-deletion", json=templ_data,
+                                             headers={"Content-Type": "application/json"})
+                    if resp.status_code != 200:
+                        await db.rollback()
+                        return {"status": "False", "message": str(resp.json()["message"])}
+
+                    response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
+                    response.delete_cookie(key="refreshment_t")
+                    response.delete_cookie(key="access_t")
+
+                    return response
+
+        except HTTPError as e:
+            return {
+                "status": "False",
+                "message": str(e),
+            }
+
+    return {"status": "True"}
 
 
 @app.post("/api/v1/forgot-password")
