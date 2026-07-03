@@ -361,7 +361,7 @@ async def get_user(
 
 
 @app.get("/api/v1/users/producers/{uid}")
-async def get_user(
+async def get_user_prod(
         request: Request,
         uid: str,
         db: AsyncSession = Depends(get_db),

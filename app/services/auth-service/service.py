@@ -6,7 +6,6 @@ from phonenumbers import NumberParseException
 from starlette.responses import StreamingResponse
 from starlette.datastructures import MutableHeaders
 import httpx
-import hashlib
 import secrets
 import jwt
 import phonenumbers
@@ -15,7 +14,7 @@ from sqlalchemy import *
 import os
 import aio_pika
 import asyncio
-
+from bcrypt import *
 
 class RabbitMQGateway:
 
@@ -45,6 +44,12 @@ limits = Limits(
     max_connections=1000,
     max_keepalive_connections=100,
 )
+
+async def password_hash(password: str) -> str:
+    return hashpw(password.encode("utf-8"), gensalt(rounds=12)).decode("utf-8")
+
+async def password_verify(password: str, hashed_password: str) -> bool:
+    return checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
 @asynccontextmanager
@@ -559,7 +564,6 @@ async def manipulate(
                     users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
                     user = users.scalar_one_or_none()
                     await db.delete(user)
-                    await db.commit()
 
                     templ_data = {
                         "email_to": user.email,
@@ -575,6 +579,8 @@ async def manipulate(
                     response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
                     response.delete_cookie(key="refreshment_t")
                     response.delete_cookie(key="access_t")
+
+                    await db.commit()
 
                     return response
 
@@ -689,7 +695,7 @@ async def registration(
                 return {"status": "False",
                         "message": "Некорректный формат телефонного номера!"}
 
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        hashed_password = await password_hash(password)
         check = await check_data(password, email, username, session=session)
 
         if check["status"] == "False":
@@ -713,7 +719,6 @@ async def registration(
             "username": username,
         }
 
-        await session.commit()
 
         message = {
             "status": "True",
@@ -752,6 +757,8 @@ async def registration(
 
         await client.post("http://mail-service:5002/api/v1/mail/on-confirmation-mail", json=template_data,
                           headers={"Content-Type": "application/json"})
+
+        await session.commit()
 
         return message
 
@@ -802,7 +809,6 @@ async def delete(
         users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
         user = users.scalar_one_or_none()
         await db.delete(user)
-        await db.commit()
 
         templ_data = {
             "email_to": user.email,
@@ -818,7 +824,7 @@ async def delete(
         response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
         response.delete_cookie(key="refreshment_t")
         response.delete_cookie(key="access_t")
-
+        await db.commit()
         return response
 
     except HTTPError as e:
@@ -837,9 +843,6 @@ async def login(
         email: str = Form(...),
 ):
     try:
-
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
-
         users = await session.execute(select(AuthDB).where(AuthDB.email == email))
         user = users.scalars().one_or_none()
 
@@ -849,7 +852,8 @@ async def login(
                 "message": "Неверный адрес электронной почты или пароль!"
             }
 
-        if user.hashed_password != hashed_password:
+        res = await password_verify(password, user.hashed_password)
+        if not res:
             return {
                 "status": "False",
                 "message": "Неверный адрес электронной почты или пароль!",
@@ -929,8 +933,7 @@ async def change_password(
                 "message": "Пользователя не существует!"
             }
 
-        user.hashed_password = hashlib.sha256(new_password.encode()).hexdigest()
-        await session.commit()
+        user.hashed_password = password_hash(new_password)
 
         templ_data = {
             "email_to": user.email,
@@ -942,6 +945,8 @@ async def change_password(
         if resp.status_code != 200:
             await session.rollback()
             return {"status": "False", "message": str(resp.json()["message"])}
+
+        await session.commit()
 
         return {
             "status": "True",

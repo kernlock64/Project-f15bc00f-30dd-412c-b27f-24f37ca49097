@@ -29,3 +29,4 @@ cryptography==46.0.5
 python-multipart==0.0.22
 aio_pika==9.6.1
 phonenumbers==9.0.26
+bcrypt==5.0.0

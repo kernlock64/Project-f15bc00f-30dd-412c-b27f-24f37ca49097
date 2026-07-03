@@ -260,7 +260,6 @@ async def manipulate(
                                        price=int(post["price"]),
                                        )
                             db.add(p)
-                            await db.commit()
 
                             client = meili.index("posts")
 
@@ -275,6 +274,8 @@ async def manipulate(
                                  "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
                                  }
                             ])
+
+                            await db.commit()
 
                     elif metadata["is_images"] == "f":
                         for post in posts:
@@ -292,7 +293,6 @@ async def manipulate(
                                        price=int(post["price"]),
                                        )
                             db.add(p)
-                            await db.commit()
 
                             client = meili.index("posts")
 
@@ -306,6 +306,8 @@ async def manipulate(
                                  "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
                                  }
                             ], primary_key="id")
+
+                            await db.commit()
 
                 case "u":
                     cls = PostDB

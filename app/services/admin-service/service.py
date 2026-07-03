@@ -3,7 +3,6 @@ from fastapi.responses import JSONResponse
 import httpx
 from sqlalchemy import *
 import uuid
-import json
 import os
 from datetime import *
 import jwt
@@ -20,6 +19,9 @@ limits = Limits(
 )
 
 MAX_AD_SIZE = 30 * 1024 * 1024
+
+class Error(Exception):
+    pass
 
 
 @asynccontextmanager
@@ -290,6 +292,8 @@ async def request(
                       text=str(data["text"]), date_created=datetime.now(tz=timezone.utc),)
         )
 
+        await db.commit()
+
     except Exception:
         return JSONResponse(
             "Something went wrong!",
@@ -339,3 +343,12 @@ async def requests_close(
     return JSONResponse(
         "True"
     )
+
+@app.post("/api/v1/management/web-health/us-verify")
+async def user_verify(
+        request_id: str,
+        db: AsyncSession = Depends(get_db),
+
+):
+
+    pass
