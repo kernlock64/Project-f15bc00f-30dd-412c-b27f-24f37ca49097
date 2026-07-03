@@ -214,6 +214,8 @@ async def manipulate(
 
                     await db.delete(post)
 
+                    await db.commit()
+
                     return {
                         "status": "True",
                     }
@@ -223,8 +225,6 @@ async def manipulate(
                     data = data["metadata"]
                     metadata = data["metadata"]
                     posts = data["posts"]
-
-                    print(posts)
 
                     url = "http://user-service:5004/api/v1/users/user-check"
 
@@ -334,6 +334,62 @@ async def manipulate(
                                 "message": "No such parameter!",
                             }
                         setattr(post, key, value)
+                    await db.commit()
+                case "g":
+
+                    metadata = data["metadata"]
+                    post_id = metadata["post_id"]
+
+                    try:
+                        res = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
+                        post = res.scalar_one_or_none()
+
+                        return {
+                            "status": "True",
+                            "title": post.title,
+                            "author_id": post.author_id,
+                            "description": post.description,
+                            "images": post.images,
+                            "directory_name": post.directory_name,
+                            "posted_at": post.posted_at,
+                            "category_id": post.category_id,
+                            "price_list_id": post.price_list_id,
+                            "coordinates": post.coordinates,
+
+                        }
+                    except Exception as e:
+                        return {
+                            "status": "False",
+                            "message": "No such post!",
+                        }
+                case "s":
+
+                    metadata = data["metadata"]
+                    q = metadata["query"]
+                    fil = metadata["filter"]
+                    page = metadata["page"]
+                    limit = metadata["limit"]
+
+                    meili = await get_meili()
+
+                    if not q:
+                        return {
+                            "status": "False",
+                            "message": "No query!",
+                        }
+
+                    if not page or not limit:
+                        return {
+                            "status": "False",
+                            "message": "Incorrect request!",
+                        }
+
+                    result = await meili.index("posts").search(q, filter=fil, page=page, hits_per_page=limit)
+
+                    return {
+                            "status": "True",
+                            "posts": result.hits if result.hits else [],
+                        }
 
         except Exception as e:
             return {
@@ -354,7 +410,9 @@ async def search_posts(
         q: str = None,
         meili: MeiliClient = Depends(get_meili),
 ):
-    result = await meili.index("posts").search(q, filter=fil, page=page, limit=limit)
+    offset = page * limit
+
+    result = await meili.index("posts").search(q, filter=fil, offset=offset, limit=limit)
 
     return {
         "status": "True",
@@ -367,23 +425,28 @@ async def get_post(
         post_id: int,
         db: AsyncSession = Depends(get_db),
 ):
-    res = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
-    post = res.scalar_one_or_none()
+    try:
+        res = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
+        post = res.scalar_one_or_none()
 
-    return {
-        "status": "True",
-        "title": post.title,
-        "author_id": post.author_id,
-        "description": post.description,
-        "images": post.images,
-        "directory_name": post.directory_name,
-        "posted_at": post.posted_at,
-        "category_id": post.category_id,
-        "price_list_id": post.price_list_id,
-        "coordinates": post.coordinates,
+        return {
+            "status": "True",
+            "title": post.title,
+            "author_id": post.author_id,
+            "description": post.description,
+            "images": post.images,
+            "directory_name": post.directory_name,
+            "posted_at": post.posted_at,
+            "category_id": post.category_id,
+            "price_list_id": post.price_list_id,
+            "coordinates": post.coordinates,
 
-    }
-
+        }
+    except Exception as e:
+        return {
+            "status": "False",
+            "message": "No such post!",
+        }
 
 @app.post("/api/v1/posts/add-post")
 async def add_post(
@@ -439,6 +502,7 @@ async def changes_post(
                 "message": "No such parameter!",
             }
         setattr(post, key, value)
+    await db.commit()
 
     return {
         "status": "True",
@@ -481,6 +545,8 @@ async def delete_post(
                         headers={"X-Key": MEDIA_KEY, "X-Directory": post.directory_name})
 
     await db.delete(post)
+
+    await db.commit()
 
     return {
         "status": "True",

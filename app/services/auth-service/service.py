@@ -635,6 +635,12 @@ async def logout(
 ):
     uid = request.headers.get('X-User-Id')
 
+    if not uid:
+        return {
+            "status": "False",
+            "message": "Пользователя не существует!"
+        }
+
     await db.execute(
         update(AuthDB)
         .where(AuthDB.uid == uid)
@@ -779,6 +785,12 @@ async def delete(
     try:
         uid = request.headers.get("X-User-Id")
         role = request.headers.get("X-Role")
+
+        if not uid:
+            return {
+                "status": "False",
+                "message": "Пользователя не существует!"
+            }
 
         background_tasks.add_task(deletion_task, uid, role)
 

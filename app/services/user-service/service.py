@@ -225,13 +225,38 @@ async def manipulate(
                             }
                         setattr(user, key, value)
 
+                    await db.commit()
+
                 case "g":
                     metadata = data["metadata"]
 
-                    user_id = str(metadata["user_id"])
+                    uid = str(metadata["user_id"])
+                    role = str(metadata["role"])
 
-                case "a":
-                    pass
+                    if role == "1":
+
+                        if await db.execute(exists(CustomersDB).where(CustomersDB.id == uid)):
+                            return {
+                                "status": "True",
+                            }
+
+                    if role == "2":
+
+                        users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
+                        user = users.scalar_one_or_none()
+                        if user:
+                            return {
+                                "status": "True",
+                                "author_name": str(user.name),
+                                "author_image": str(user.image),
+                            }
+
+                    return {
+                        "status": "False",
+                        "message": "Something went wrong!",
+                    }
+
+
 
         except Exception as e:
             return {

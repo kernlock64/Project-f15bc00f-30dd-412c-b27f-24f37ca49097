@@ -7,17 +7,12 @@ import json
 import os
 from datetime import *
 import jwt
-import io
 
 from httpx import Limits, AsyncClient, HTTPError
 
-from db_init import get_async_session, engine
 from model import TicketsDB, PriceListsDB
 from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
-
-import asyncio
-import aio_pika
 
 limits = Limits(
     max_connections=1000,
@@ -54,7 +49,6 @@ async def send_request(
         dest: str,
         data: dict,
 ) -> httpx.Response:
-
     client = await get_httpx()
 
     dest_url = {
@@ -64,13 +58,14 @@ async def send_request(
     }
     if dest not in [
         "dp",
-        "pp",
+        "gp",
         "ap",
+        "up",
+        "sp",
         "da",
-        "pu",
         "va",
+        "uu",
         "gu",
-        "au",
     ]:
         return {
             "Invalid destination!"
@@ -150,17 +145,52 @@ async def push(
             "message": str(e)
         }
 
+
 @app.get("/api/v1/management/web-health/get-p")
-async def get_post():
-    pass
+async def get_post(
+        pid: str
+):
+    res = await send_request("gp", {"pid": pid})
+
+    if res.json().get("status") != "True":
+        return JSONResponse(
+            "Something went wrong!",
+        )
+
+    return res.json()
+
 
 @app.get("/api/v1/management/web-health/get-ps")
-async def get_posts():
-    pass
+async def get_posts(
+        page: int = 1,
+        limit: int = 10,
+        fil: str = None,
+        q: str = None,
+):
+    res = await send_request("sp", {"page": page, "limit": limit, "filter": fil, "query": q})
+
+    if res.json().get("status") != "True":
+        return JSONResponse(
+            "Something went wrong!",
+        )
+
+    return res.json()
+
 
 @app.get("/api/v1/management/web-health/get-u")
-async def get_user():
-    pass
+async def get_user(
+        uid: str
+
+):
+    res = await send_request("gp", {"uid": uid})
+
+    if res.json().get("status") != "True":
+        return {
+            "status": "False",
+            "message": res.json()
+        }
+
+    return res.json()
 
 
 @app.get("/api/v1/management/web-health/get-us")
@@ -171,15 +201,141 @@ async def get_users():
 @app.get("/api/v1/management/web-health/m/{destination}")
 async def manipulate(
         destination: str,
+        data: dict,
 ):
-    pass
+    try:
+        match destination:
+
+            case "dp":
+                payload = {
+                    "pid": data["pid"],
+                }
+
+                res = await send_request("dp", payload)
+
+                if res.json().get("status") != "True":
+                    return {
+                        "status": "False",
+                        "message": res.json()
+                    }
+
+                return res.json()
+
+            case "da":
+                payload = {
+                    "uid": data["uid"],
+                }
+
+                res = await send_request("da", payload)
+
+                if res.json().get("status") != "True":
+                    return {
+                        "status": "False",
+                        "message": res.json()
+                    }
+
+                return res.json()
+
+            case "up":
+                payload = {
+                    "changed_data": data["changed_data"],
+                }
+
+                res = await send_request("up", payload)
+
+                if res.json().get("status") != "True":
+                    return {
+                        "status": "False",
+                        "message": res.json()
+                    }
+
+                return res.json()
+
+            case "up":
+                payload = {
+                    "changed_data": data["changed_data"],
+                }
+
+                res = await send_request("up", payload)
+
+                if res.json().get("status") != "True":
+                    return {
+                        "status": "False",
+                        "message": res.json()
+                    }
+
+                return res.json()
+
+    except KeyError:
+
+        return JSONResponse(
+            "Отсутствует один, или несколько обязательных аргументов!"
+        )
+
+    except:
+        return JSONResponse(
+            "Something went wrong!",
+        )
 
 
 @app.post("/api/v1/management/web-health/request")
-async def request():
+async def request(
+        data: str,
+        db: AsyncSession = Depends(get_db),
+):
+    try:
+        db.add(
+            TicketsDB(id=str(uuid.uuid4()), author_id=str(data["author_id"]), ticket_status="В РАБОТЕ",
+                      theme=str(data["theme"]),
+                      text=str(data["text"]), date_created=datetime.now(tz=timezone.utc),)
+        )
+
+    except Exception:
+        return JSONResponse(
+            "Something went wrong!",
+        )
+
+
+@app.post("/api/v1/management/web-health/request-take")
+async def request_take(
+        data: str,
+        db: AsyncSession = Depends(get_db),
+):
+
+    # Add nickname for admin identification to db (later)
     pass
+
+
+@app.post("/api/v1/management/web-health/get-request")
+async def get_requests(
+        page: int = 1,
+        limit: int = 10,
+        db: AsyncSession = Depends(get_db),
+
+):
+    offset = limit * page
+    count = db.scalar(select(func.count()).select_from(TicketsDB))
+
+    res = await db.scalars(select(TicketsDB).offset(offset).limit(limit))
+
+    return {
+        "count": count,
+        "data": [res.all()]
+    }
 
 
 @app.post("/api/v1/management/web-health/request-c")
-async def requests_close():
-    pass
+async def requests_close(
+        request_id: str,
+        db: AsyncSession = Depends(get_db),
+
+):
+
+    tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == request_id))
+    ticket = tickets.scalar_one_or_none()
+    await db.delete(ticket)
+    await db.commit()
+
+    return JSONResponse(
+        "True"
+    )
