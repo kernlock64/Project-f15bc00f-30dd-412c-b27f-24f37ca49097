@@ -4,8 +4,9 @@ from geoalchemy2 import WKTElement
 from meilisearch_python_sdk import AsyncClient as MeiliClient
 from meilisearch_python_sdk.models.settings import MeilisearchSettings
 
+from fastapi.responses import JSONResponse
 from datetime import *
-from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body
+from fastapi import FastAPI, Depends, Request, Body, status, HTTPException
 import httpx
 from sqlalchemy import *
 from httpx import Limits, AsyncClient
@@ -122,6 +123,17 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 app = FastAPI(lifespan=lifespan)
 
 
+@app.exception_handler(Exception)
+async def universal_server_error_handler(request: Request, exc: Exception):
+    print(exc)
+
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
+    )
+
+
 async def get_db():
     factory = app.state.db
     async with factory() as session:
@@ -143,25 +155,24 @@ async def delete_user(
         await db.execute(delete(cls).where(cls.id == uid))
         client = app.state.http_client
         for i in image_ids:
-            await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{i}",
-                                headers={"X-Key": MEDIA_KEY, "X-Directory": i})
+            res = await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{i}",
+                                      headers={"X-Key": MEDIA_KEY, "X-Directory": i})
+
+            if res.status_code != 200:
+                print(res.text, res.status_code, )
+                raise Exception
+
         await db.commit()
-    return {
-        "status": "True",
-    }
 
 
 async def listen_deletion():
-    try:
-        async with app.state.d_queue.iterator() as queue_iter:
-            async for message in queue_iter:
-                async with message.process():
-                    data = json.loads(message.body.decode())
-                    uid = data["X-User-Id"]
+    async with app.state.d_queue.iterator() as queue_iter:
+        async for message in queue_iter:
+            async with message.process():
+                data = json.loads(message.body.decode())
+                uid = data["X-User-Id"]
 
-                    await delete_user(uid, app.state.db)
-    except Exception as e:
-        print(e)
+                await delete_user(uid, app.state.db)
 
 
 async def main():
@@ -179,229 +190,218 @@ async def manipulate(
         meili: MeiliClient = Depends(get_meili),
 ):
     if request.headers.get("X-User-Id") != '0' or request.headers.get("X-Role") != '0':
-        return {
-            "status": "False",
-            "message": "Unauthorized access!"
-        }
+        raise HTTPException(
+            status_code=403,
+            detail="FORBIDDEN"
+        )
 
     destination = request.headers.get("X-Scope")
 
     if destination[1] != "p":
-        return {
-            "status": "False",
-            "message": "Incorrect scope!"
-        }
+        raise HTTPException(
+            status_code=403,
+            detail="MISS_SCOPE"
+        )
 
     else:
-        try:
-            match destination[0]:
+        match destination[0]:
 
-                case "d":
-                    metadata = data["metadata"]
-                    post_id = metadata["post_id"]
+            case "d":
+                metadata = data["metadata"]
+                post_id = metadata["post_id"]
 
-                    posts = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
-                    post = posts.scalar_one_or_none()
+                posts = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
+                post = posts.scalar_one_or_none()
 
-                    if not post:
-                        return {
-                            "status": "False",
-                            "message": "No such post!"
-                        }
+                if not post:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="NO_SUCH_POST"
+                    )
 
-                    await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{post.directory_name}",
-                                        headers={"X-Key": MEDIA_KEY, "X-Directory": post.directory_name})
+                resp = await client.delete(
+                    f"http://media-service:5001/api/v1/media/delete-image/{post.directory_name}",
+                    headers={"X-Key": MEDIA_KEY, "X-Directory": post.directory_name})
 
-                    await db.delete(post)
+                if resp.status_code != 200:
+                    print(resp.text, resp.status_code)
+                    raise Exception
 
-                    await db.commit()
+                await db.delete(post)
 
-                    return {
-                        "status": "True",
-                    }
+                await db.commit()
 
-                case "a":
+            case "a":
 
-                    data = data["metadata"]
-                    metadata = data["metadata"]
-                    posts = data["posts"]
+                data = data["metadata"]
+                metadata = data["metadata"]
+                posts = data["posts"]
 
-                    url = "http://user-service:5004/api/v1/users/user-check"
+                url = "http://user-service:5004/api/v1/users/user-check"
 
-                    uid = metadata["author_id"]
-                    price_list_name = metadata["price-list-name"]
+                uid = metadata["author_id"]
+                price_list_name = metadata["price-list-name"]
 
-                    req = await client.get(url, headers={"User-Id": uid, "Role": "2"})
-                    if req.json()["status"] != "True":
-                        return {
-                            "status": "False",
-                            "message": "Something went wrong!"
-                        }
+                req = await client.get(url, headers={"User-Id": uid, "Role": "2"})
+                if req.status_code != 200:
+                    print(req.text, req.status_code)
+                    raise Exception
 
-                    dat = req.json()
-                    author_name = dat["author_name"]
-                    author_image = dat["author_image"]
+                dat = req.json()
+                author_name = dat["author_name"]
+                author_image = dat["author_image"]
 
-                    if metadata["is_images"] == "t":
-                        for post in posts:
-                            post_id = str((lambda: ''.join(
-                                secrets.choice("abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789") for _ in
-                                range(19)))())
+                if metadata["is_images"] == "t":
+                    for post in posts:
+                        post_id = str((lambda: ''.join(
+                            secrets.choice("abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789") for _ in
+                            range(19)))())
 
-                            p = PostDB(id=post_id, author_id=uid, title=post["title"],
-                                       posted_at=datetime.now(timezone.utc),
-                                       description=post["description"],
-                                       images=dict(post).get("images"),
-                                       directory_name=dict(post).get("images_dir"),
-                                       category_id=post["category_path"],
-                                       price_list_name=price_list_name,
-                                       coordinates=WKTElement(
-                                           f"POINT({post["coordinates"][0]} {post["coordinates"][1]})", srid=4326),
-                                       price=int(post["price"]),
-                                       )
-                            db.add(p)
+                        p = PostDB(id=post_id, author_id=uid, title=post["title"],
+                                   posted_at=datetime.now(timezone.utc),
+                                   description=post["description"],
+                                   images=dict(post).get("images"),
+                                   directory_name=dict(post).get("images_dir"),
+                                   category_id=post["category_path"],
+                                   price_list_name=price_list_name,
+                                   coordinates=WKTElement(
+                                       f"POINT({post["coordinates"][0]} {post["coordinates"][1]})", srid=4326),
+                                   price=int(post["price"]),
+                                   )
+                        db.add(p)
 
-                            client = meili.index("posts")
+                        client = meili.index("posts")
 
-                            await client.add_documents([
-                                {"id": post_id, "title": post["title"], "price": post["price"],
-                                 "title_image": str(str(post["images_dir"]) + "/" + str(post['title_image'])),
-                                 "category_id":
-                                     post["category_path"],
-                                 "author_id": uid,
-                                 "author_name": author_name,
-                                 "author_image": author_image,
-                                 "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
-                                 }
-                            ])
+                        await client.add_documents([
+                            {"id": post_id, "title": post["title"], "price": post["price"],
+                             "title_image": str(str(post["images_dir"]) + "/" + str(post['title_image'])),
+                             "category_id":
+                                 post["category_path"],
+                             "author_id": uid,
+                             "author_name": author_name,
+                             "author_image": author_image,
+                             "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
+                             }
+                        ])
 
-                            await db.commit()
+                        await db.commit()
 
-                    elif metadata["is_images"] == "f":
-                        for post in posts:
-                            post_id = str((lambda: ''.join(
-                                secrets.choice("abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789") for _ in
-                                range(19)))())
+                elif metadata["is_images"] == "f":
+                    for post in posts:
+                        post_id = str((lambda: ''.join(
+                            secrets.choice("abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789") for _ in
+                            range(19)))())
 
-                            p = PostDB(id=post_id, author_id=uid, title=post["title"],
-                                       posted_at=datetime.now(timezone.utc),
-                                       description=post["description"],
-                                       category_id=post["category_path"],
-                                       price_list_name=price_list_name,
-                                       coordinates=WKTElement(
-                                           f"POINT({post["coordinates"][0]} {post["coordinates"][1]})", srid=4326),
-                                       price=int(post["price"]),
-                                       )
-                            db.add(p)
+                        p = PostDB(id=post_id, author_id=uid, title=post["title"],
+                                   posted_at=datetime.now(timezone.utc),
+                                   description=post["description"],
+                                   category_id=post["category_path"],
+                                   price_list_name=price_list_name,
+                                   coordinates=WKTElement(
+                                       f"POINT({post["coordinates"][0]} {post["coordinates"][1]})", srid=4326),
+                                   price=int(post["price"]),
+                                   )
+                        db.add(p)
 
-                            client = meili.index("posts")
+                        client = meili.index("posts")
 
-                            await client.add_documents([
-                                {"id": post_id, "title": post["title"], "price": post["price"],
-                                 "category_id":
-                                     post["category_path"],
-                                 "author_id": uid,
-                                 "author_name": author_name,
-                                 "author_image": author_image,
-                                 "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
-                                 }
-                            ], primary_key="id")
+                        await client.add_documents([
+                            {"id": post_id, "title": post["title"], "price": post["price"],
+                             "category_id":
+                                 post["category_path"],
+                             "author_id": uid,
+                             "author_name": author_name,
+                             "author_image": author_image,
+                             "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
+                             }
+                        ], primary_key="id")
 
-                            await db.commit()
+                        await db.commit()
 
-                case "u":
-                    cls = PostDB
+            case "u":
+                cls = PostDB
 
-                    metadata = data["metadata"]
-                    changed_data = data["changed_data"]
+                metadata = data["metadata"]
+                changed_data = data["changed_data"]
 
-                    post_id = metadata["post_id"]
+                post_id = metadata["post_id"]
 
-                    posts = await db.execute(select(cls).where(PostDB.id == int(post_id)))
-                    post = posts.scalar_one_or_none()
+                posts = await db.execute(select(cls).where(PostDB.id == int(post_id)))
+                post = posts.scalar_one_or_none()
 
-                    if not post:
-                        return {
-                            "status": "False",
-                            "message": "No such post!",
-                        }
+                if not post:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="NO_SUCH_POST"
+                    )
 
-                    for key, value in changed_data.items():
-                        if not key in cls.__table__.columns and key not in ["author_id", "price_list_name",
-                                                                            "date_created",
-                                                                            "posted_at",
-                                                                            "images", "id"]:
-                            return {
-                                "status": "False",
-                                "message": "No such parameter!",
-                            }
-                        setattr(post, key, value)
-                    await db.commit()
-                case "g":
+                for key, value in changed_data.items():
+                    if not key in cls.__table__.columns and key not in ["author_id", "price_list_name",
+                                                                        "date_created",
+                                                                        "posted_at",
+                                                                        "images", "id"]:
+                        raise HTTPException(
+                            status_code=404,
+                            detail="NO_SUCH_PARAMETER"
+                        )
+                    setattr(post, key, value)
+                await db.commit()
+            case "g":
 
-                    metadata = data["metadata"]
-                    post_id = metadata["post_id"]
+                metadata = data["metadata"]
+                post_id = metadata["post_id"]
 
-                    try:
-                        res = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
-                        post = res.scalar_one_or_none()
+                res = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
+                post = res.scalar_one_or_none()
 
-                        return {
-                            "status": "True",
-                            "title": post.title,
-                            "author_id": post.author_id,
-                            "description": post.description,
-                            "images": post.images,
-                            "directory_name": post.directory_name,
-                            "posted_at": post.posted_at,
-                            "category_id": post.category_id,
-                            "price_list_id": post.price_list_id,
-                            "coordinates": post.coordinates,
+                if not post:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="NO_SUCH_POST"
+                    )
 
-                        }
-                    except Exception as e:
-                        return {
-                            "status": "False",
-                            "message": "No such post!",
-                        }
-                case "s":
+                return {
+                    "title": post.title,
+                    "author_id": post.author_id,
+                    "description": post.description,
+                    "images": post.images,
+                    "directory_name": post.directory_name,
+                    "posted_at": post.posted_at,
+                    "category_id": post.category_id,
+                    "price_list_id": post.price_list_id,
+                    "coordinates": post.coordinates,
 
-                    metadata = data["metadata"]
-                    q = metadata["query"]
-                    fil = metadata["filter"]
-                    page = metadata["page"]
-                    limit = metadata["limit"]
+                }
 
-                    meili = await get_meili()
+            case "s":
 
-                    if not q:
-                        return {
-                            "status": "False",
-                            "message": "No query!",
-                        }
+                metadata = data["metadata"]
+                q = metadata["query"]
+                fil = metadata["filter"]
+                page = metadata["page"]
+                limit = metadata["limit"]
 
-                    if not page or not limit:
-                        return {
-                            "status": "False",
-                            "message": "Incorrect request!",
-                        }
+                meili = await get_meili()
 
-                    result = await meili.index("posts").search(q, filter=fil, page=page, hits_per_page=limit)
+                if not q:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="NO_QUERY"
+                    )
 
-                    return {
-                            "status": "True",
-                            "posts": result.hits if result.hits else [],
-                        }
+                if not page or not limit:
+                    raise HTTPException(
+                        status_code=400,
+                    )
+                result = await meili.index("posts").search(q, filter=fil, page=page, hits_per_page=limit)
 
-        except Exception as e:
-            return {
-                "status": "False",
-                "message": str(e)
-            }
-
-        return {
-            "status": "True",
-        }
+                return {
+                    "posts": result.hits if result.hits else [],
+                }
+        raise HTTPException(
+            status_code=404,
+            detail="Incorrect scope!",
+        )
 
 
 @app.get("/api/v1/posts/search")
@@ -412,12 +412,11 @@ async def search_posts(
         q: str = None,
         meili: MeiliClient = Depends(get_meili),
 ):
-    offset = page * limit
+    offset = (page - 1) * limit
 
     result = await meili.index("posts").search(q, filter=fil, offset=offset, limit=limit)
 
     return {
-        "status": "True",
         "posts": result.hits if result.hits else [],
     }
 
@@ -427,9 +426,15 @@ async def get_post(
         post_id: int,
         db: AsyncSession = Depends(get_db),
 ):
-    try:
+
         res = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
         post = res.scalar_one_or_none()
+
+        if not post:
+            raise HTTPException(
+                status_code=404,
+                detail="No such post!"
+            )
 
         return {
             "status": "True",
@@ -444,11 +449,7 @@ async def get_post(
             "coordinates": post.coordinates,
 
         }
-    except Exception as e:
-        return {
-            "status": "False",
-            "message": "No such post!",
-        }
+
 
 @app.post("/api/v1/posts/add-post")
 async def add_post(
@@ -456,18 +457,10 @@ async def add_post(
         db: AsyncSession = Depends(get_db),
         changed_data: dict = Body,
 ):
-    role = request.headers.get("X-Role")
-
-    if role != "2":
-        return {
-            "status": "False",
-            "message": "Unauthorized!"
-        }
-
-    return {
-        "status": "False",
-    }
-
+    raise HTTPException(
+        status_code=503,
+        detail="Ведутся технические работы. Пожалуйста, попробуйте позже."
+    )
 
 @app.post("/api/v1/posts/changes-post")
 async def changes_post(
@@ -479,10 +472,10 @@ async def changes_post(
     role = request.headers.get("X-Role")
 
     if role != "2":
-        return {
-            "status": "False",
-            "message": "Unauthorized!"
-        }
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized!",
+        )
 
     uid = request.headers.get("X-User-Id")
     cls = PostDB
@@ -491,24 +484,22 @@ async def changes_post(
     post = posts.scalar_one_or_none()
 
     if not post:
-        return {
-            "status": "False",
-            "message": "No such post!",
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="NO_SUCH_POST"
+        )
 
     for key, value in changed_data.items():
         if not key in cls.__table__.columns and key not in ["author_id", "price_list_id", "date_created", "posted_at",
                                                             "images"]:
-            return {
-                "status": "False",
-                "message": "No such parameter!",
-            }
+            raise HTTPException(
+                status_code=404,
+                detail="NO_SUCH_PARAMETER"
+            )
         setattr(post, key, value)
-    await db.commit()
 
-    return {
-        "status": "True",
-    }
+    await db.commit()
+    return None
 
 
 @app.post("/api/v1/posts/delete-post")
@@ -521,39 +512,37 @@ async def delete_post(
     role = request.headers.get("X-Role")
 
     if role != "2":
-        return {
-            "status": "False",
-            "message": "Unauthorized!"
-        }
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized!",
+        )
 
     uid = request.headers.get("X-User-Id")
 
     if uid == "-1":
-        return {
-            "status": "False",
-            "message": "Unauthorized!"
-        }
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized!",
+        )
 
     posts = await db.execute(select(PostDB).where(PostDB.id == int(post_id), PostDB.author_id == uid))
     post = posts.scalar_one_or_none()
 
     if not post:
-        return {
-            "status": "False",
-            "message": "No such post!"
-        }
-
-    await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{post.directory_name}",
+        raise HTTPException(
+            status_code=404,
+            detail="No such post!",
+        )
+    resp = await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{post.directory_name}",
                         headers={"X-Key": MEDIA_KEY, "X-Directory": post.directory_name})
+
+    if resp.status_code != 200:
+        print(resp.text, resp.status_code)
+        raise Exception
 
     await db.delete(post)
 
     await db.commit()
-
-    return {
-        "status": "True",
-    }
-
 
 @app.post("/api/v1/posts/report-post")
 async def report_post(
@@ -571,26 +560,25 @@ async def report_post(
             "message": "Something went wrong!",
         }
 
-    if await db.execute(exists(PostDB).where(PostDB.id == uid)):
+    if await db.execute(exists(PostDB).where(PostDB.id == post_id)):
         metadata = {
             "uid": uid,
-            "role": request.headers.get("X-Role"),
-            "post_id": post_id,
-            "date_created": datetime.now(timezone.utc),
-            "data": data,
+            "details": {
+                "role": request.headers.get("X-Role"),
+                "post_id": post_id,
+                "text": data, },
+            "theme": "REPORT"
         }
 
         await client.post("http://admin-service:5006/api/v1/management/web-health/request", data=metadata)
 
-        return {
-            "status": "True",
-        }
+        return None
 
-    return {
-        "status": "False",
-        "message": "Something went wrong!",
-    }
-
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail="No such post!",
+        )
 
 @app.get("/api/v1/posts/{path:path}")
 async def get_posts(
@@ -599,10 +587,10 @@ async def get_posts(
     category_id = PATH_TO_ID.get(path)
 
     if not category_id:
-        return {
-            "status": "False",
-            "message": "Страницы не существует!"
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="No such category!",
+        )
 
     category = CATEGORIES_CACHE.get(category_id)
 
@@ -621,7 +609,6 @@ async def get_posts(
     else:
         cat = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == category_id]
         return {
-            "status": "True",
             "categories": cat,
 
         }

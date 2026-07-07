@@ -1,6 +1,6 @@
 import uuid
 import json
-from fastapi import FastAPI, Depends, Request, Response, Form, status, BackgroundTasks, Body
+from fastapi import FastAPI, Depends, Request, Response, Form, status, BackgroundTasks, Body, HTTPException
 from fastapi.responses import JSONResponse
 from phonenumbers import NumberParseException
 from starlette.responses import StreamingResponse
@@ -15,6 +15,7 @@ import os
 import aio_pika
 import asyncio
 from bcrypt import *
+
 
 class RabbitMQGateway:
 
@@ -45,8 +46,10 @@ limits = Limits(
     max_keepalive_connections=100,
 )
 
+
 async def password_hash(password: str) -> str:
     return hashpw(password.encode("utf-8"), gensalt(rounds=12)).decode("utf-8")
+
 
 async def password_verify(password: str, hashed_password: str) -> bool:
     return checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
@@ -112,6 +115,24 @@ async def lifespan(cl: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+@app.exception_handler(Exception)
+async def universal_server_error_handler(request: Request, exc: Exception):
+
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            content={
+                "detail": exc.detail,}
+        )
+
+    print(exc)
+
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
+    )
+
+
 async def publish(data: dict, routing_key):
     exchange = app.state.exchange
 
@@ -123,15 +144,9 @@ async def publish(data: dict, routing_key):
     )
 
     if not routing_key:
-        return {
-            "status": "False",
-            "message": "Please enter valid route!",
-        }
-    await exchange.publish(message, routing_key=routing_key)
+        raise Exception("No routing_key provided!")
 
-    return {
-        "status": "True",
-    }
+    await exchange.publish(message, routing_key=routing_key)
 
 
 async def iternal_publish(uid):
@@ -147,15 +162,14 @@ async def iternal_publish(uid):
 
     await exchange.publish(message, routing_key=routing_key)
 
-    return {
-        "status": "True",
-    }
-
 
 async def user_check(uid, eng):
     async with eng() as db:
         users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
         user = users.scalar_one_or_none()
+
+        if not user:
+            raise Exception("No such user!")
 
         if user.status != "ACTIVE":
             await db.delete(user)
@@ -163,19 +177,13 @@ async def user_check(uid, eng):
 
 
 async def listen_check():
-    try:
-        async with app.state.iternal_user_validation.iterator() as queue_iter:
-            async for message in queue_iter:
-                async with message.process():
-                    data = json.loads(message.body.decode())
-                    uid = data["X-User-Id"]
+    async with app.state.iternal_user_validation.iterator() as queue_iter:
+        async for message in queue_iter:
+            async with message.process():
+                data = json.loads(message.body.decode())
+                uid = data["X-User-Id"]
 
-                    await user_check(uid, app.state.db)
-    except Exception as e:
-        return {
-            "status": "False",
-            "message": str(e)
-        }
+                await user_check(uid, app.state.db)
 
 
 async def main():
@@ -237,42 +245,28 @@ async def proxy(request: Request, call_next):
         payload = jwt.decode(token, public_key, algorithms="ES256")
 
     except jwt.InvalidSignatureError:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "status": "False",
-                "message": "Unauthorized!",
-            }
-        )
+        raise Exception("Invalid signature!")
 
     except jwt.ExpiredSignatureError:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "status": "False",
-                "message": "Token has expired",
-            }
+        raise HTTPException(
+            status_code=401,
+            detail="Token has expired!",
         )
 
     eng = app.state.db
+
     if payload["thm"] == "access":
         async with eng() as db:
             version = await db.execute(select(AuthDB.token_version).where(AuthDB.uid == payload["uid"]))
             v = version.scalar_one_or_none()
 
             if not v:
-                return {
-                    "status": "False",
-                    "message": "User is not exists!"
-                }
+                raise Exception("No such user!")
 
         if v != payload["tov"]:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "status": "False",
-                    "message": "Unauthorized!",
-                }
+            raise HTTPException(
+                status_code=401,
+                detail="Unauthorized!",
             )
 
         headers = MutableHeaders(scope=request.scope)
@@ -294,21 +288,15 @@ async def proxy(request: Request, call_next):
             u = users.scalar_one_or_none()
 
         if u.hashed_password != payload["p"]:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "status": "False",
-                    "message": "Password has been already changed!",
-                }
+            raise HTTPException(
+                status_code=403,
+                detail="Password has been already changed!",
             )
 
         if request.url.path != "/change-password":
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "status": "False",
-                    "message": "Unauthorized!",
-                }
+            raise HTTPException(
+                status_code=401,
+                detail="Unauthorized!",
             )
 
         headers = MutableHeaders(scope=request.scope)
@@ -336,11 +324,7 @@ async def proxy(request: Request, call_next):
 
         resp = await call_next(request)
         return resp
-
-    return {
-        "status": "False",
-        "message": "Unexpected error!"
-    }
+    return None
 
 
 @app.post("/api/v1/user-confirm")
@@ -355,21 +339,15 @@ async def user_confirm(
         payload = jwt.decode(token, public_key, algorithms="ES256")
 
     except jwt.InvalidSignatureError:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "status": "False",
-                "message": "Ссылка недействительна или была просрочена!",
-            }
+        raise HTTPException(
+            status_code=401,
+            detail="Ссылка недействительна или была просрочена!",
         )
 
     except jwt.ExpiredSignatureError:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "status": "False",
-                "message": "Ссылка недействительна или была просрочена!",
-            }
+        raise HTTPException(
+            status_code=401,
+            detail="Ссылка недействительна или была просрочена!",
         )
 
     uid = payload.get("i")
@@ -378,78 +356,51 @@ async def user_confirm(
     telephone = payload.get("t")
 
     if user.status == "ACTIVE":
-        return JSONResponse({
-            "status": "False",
-            "message": "Ссылка уже была активирована!"
-        })
+        raise HTTPException(
+            status_code=400,
+            detail="Аккаунт уже был активирован!",
+        )
 
     role = payload.get("r")
     user.status = "ACTIVE" if role == 1 else "VERIFIED"
     await db.commit()
 
-    await client.post("http://user-service:5004/api/v1/users/add-user", data={
+    if role == 2:
+        payload = {
+            "details": {"phone_number": telephone,
+            "email": user.email,
+            "username": user.username,},
+            "theme": "REQUEST",
+            "uid": user.uid,
+        }
+
+        req = await client.post("http://admin-service:5006/api/v1/management/web-health/request", data=payload)
+        if req.status_code != 200:
+            print(req.text, req.status_code)
+            raise Exception
+
+    req1 = await client.post("http://user-service:5004/api/v1/users/add-user", data={
         "username": user.username,
         "email": user.email,
         "role": user.role,
         "uid": user.uid,
         "telephone": telephone,
     })
-    await client.post("http://mail-service:5002/api/v1/mail/on-registration", json={
+
+    if req1.status_code != 200:
+        print(req1.text, req1.status_code)
+
+        raise Exception
+
+    req2 = await client.post("http://mail-service:5002/api/v1/mail/on-registration", json={
         "username": user.username,
     },
-                      headers={"Content-Type": "application/json"})
+                             headers={"Content-Type": "application/json"})
 
-    return {"status": "True"}
+    if req2.status_code != 200:
+        print(req2.text, req2.status_code)
 
-
-@app.post("/api/v1/admin-accept")
-async def user_confirm_a(
-        request: Request,
-        db: AsyncSession = Depends(get_db),
-):
-    public_key = os.getenv("PUBLIC_KEY").replace("\\n", "\n")
-
-    try:
-        payload = jwt.decode(request.headers.get("admin_t"), public_key, algorithms="ES256")
-
-    except jwt.InvalidSignatureError:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "status": "False",
-                "message": "Unauthorized!",
-            }
-        )
-
-    except jwt.ExpiredSignatureError:
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "status": "False",
-                "message": "Unauthorized!",
-            }
-        )
-
-    if payload.get("dest") != "aa":
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "status": "False",
-                "message": "Unauthorized!",
-            }
-        )
-
-    data = request.headers.get("data")
-    uid = data["uid"]
-    users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
-    user = users.scalar_one_or_none()
-
-    if user.role == 2:
-        user.status = "ACTIVE"
-    await db.commit()
-
-    return {"status": "True"}
-
+        raise Exception
 
 async def check_data(password, email, username, session: AsyncSession):
     check_flag = False
@@ -500,97 +451,96 @@ async def manipulate(
         client: AsyncClient = Depends(get_db),
 ):
     if request.headers.get("X-User-Id") != '0' or request.headers.get("X-Role") != '0':
-        return {
-            "status": "False",
-            "message": "Unauthorized access!"
-        }
+        raise HTTPException(
+            status_code=403,
+            detail="FORBIDDEN"
+        )
 
     destination = request.headers.get("X-Scope")
 
     if destination[1] != "a":
-        return {
-            "status": "False",
-            "message": "Incorrect scope!"
-        }
+        raise HTTPException(
+            status_code=400,
+            detail="MISS_SCOPE",
+        )
 
     else:
-        try:
-            match destination[0]:
+        match destination[0]:
 
-                case "v":
-                    metadata = data["metadata"]
-                    cls = AuthDB(metadata)
+            case "v":
+                metadata = data["metadata"]
+                cls = AuthDB(metadata)
 
-                    user_id = metadata["user_id"]
+                user_id = metadata["user_id"]
 
-                    users = await db.execute(select(cls).where(cls.uid == str(user_id)))
-                    user = users.scalar_one_or_none()
+                users = await db.execute(select(cls).where(cls.uid == str(user_id)))
+                user = users.scalar_one_or_none()
 
-                    if not user:
-                        return {
-                            "status": "False",
-                            "message": "No such user!",
-                        }
+                if not user:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="USER_NOT_FOUND",
+                    )
 
-                    user.status = "ACTIVE"
+                user.status = "ACTIVE"
 
-                    templ_data = {
-                        "email_to": user.email,
-                        "username": user.username,
-                    }
+                templ_data = {
+                    "email_to": user.email,
+                    "username": user.username,
+                }
 
-                    await db.commit()
+                await db.commit()
 
-                    await client.post("http://mail-service:5002/api/v1/mail/on-acceptance-provider", json=templ_data,
-                                      headers={"Content-Type": "application/json"})
+                req = await client.post("http://mail-service:5002/api/v1/mail/on-acceptance-provider", json=templ_data,
+                                        headers={"Content-Type": "application/json"})
 
-                    return {
-                        "status": "True",
-                    }
+                if req.status_code != 200:
+                    print(req.text, req.status_code)
 
-                case "d":
+                    raise Exception
 
-                    metadata = data["metadata"]
-                    uid = str(metadata["user_id"])
-                    role = str(int(metadata["role"]))
+            case "d":
 
-                    background_tasks.add_task(deletion_task, uid, role)
+                metadata = data["metadata"]
+                uid = str(metadata["user_id"])
+                role = str(int(metadata["role"]))
 
-                    await db.execute(
-                        update(TokenDB)
-                        .where(TokenDB.uid == uid)
-                        .values(is_expired=True))
+                background_tasks.add_task(deletion_task, uid, role)
 
-                    users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
-                    user = users.scalar_one_or_none()
-                    await db.delete(user)
+                await db.execute(
+                    update(TokenDB)
+                    .where(TokenDB.uid == uid)
+                    .values(is_expired=True))
 
-                    templ_data = {
-                        "email_to": user.email,
-                        "username": user.username,
-                    }
+                users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
+                user = users.scalar_one_or_none()
+                await db.delete(user)
 
-                    resp = await client.post("http://mail-service:5002/api/v1/mail/on-deletion", json=templ_data,
-                                             headers={"Content-Type": "application/json"})
-                    if resp.status_code != 200:
-                        await db.rollback()
-                        return {"status": "False", "message": str(resp.json()["message"])}
+                templ_data = {
+                    "email_to": user.email,
+                    "username": user.username,
+                }
 
-                    response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
-                    response.delete_cookie(key="refreshment_t")
-                    response.delete_cookie(key="access_t")
+                resp = await client.post("http://mail-service:5002/api/v1/mail/on-deletion", json=templ_data,
+                                         headers={"Content-Type": "application/json"})
 
-                    await db.commit()
+                if resp.status_code != 200:
+                    await db.rollback()
+                    print(resp.text, resp.status_code)
+                    raise Exception
 
-                    return response
+                response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
+                response.delete_cookie(key="refreshment_t")
+                response.delete_cookie(key="access_t")
 
-        except HTTPError as e:
-            return {
-                "status": "False",
-                "message": str(e),
-            }
+                await db.commit()
 
-    return {"status": "True"}
+                return response
+
+    raise HTTPException(
+        status_code=404,
+        detail="Incorrect scope!",
+    )
 
 
 @app.post("/api/v1/forgot-password")
@@ -599,39 +549,37 @@ async def forgot_password(
         email: str = Form(...),
         client: AsyncClient = Depends(get_httpx),
 ):
-    try:
-        res = await db.execute(select(AuthDB).where(AuthDB.email == email))
-        user = res.scalar_one_or_none()
+    res = await db.execute(select(AuthDB).where(AuthDB.email == email))
+    user = res.scalar_one_or_none()
 
-        if user:
-            payload = {
-                "e": user.email,
-                "p": user.hashed_password,
-                "thm": "reset",
-                "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=300)
-            }
-            prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
-            reset_t = jwt.encode(payload, prv_key, algorithm="ES256")
+    if not user:
+        raise Exception("No such user!")
 
-            templ_data = {
-                "email_to": user.email,
-                "username": user.username,
-                "r_token": reset_t
-            }
+    else:
+        payload = {
+            "e": user.email,
+            "p": user.hashed_password,
+            "thm": "reset",
+            "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=300)
+        }
+        prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
+        reset_t = jwt.encode(payload, prv_key, algorithm="ES256")
 
-            await client.post("http://mail-service:5002/api/v1/mail/on-password-forget", json=templ_data,
-                              headers={"Content-Type": "application/json"})
-
-        return {
-            "status": "True",
-            "message": "Запрос на смену пароля был успешно создан!"
+        templ_data = {
+            "email_to": user.email,
+            "username": user.username,
+            "r_token": reset_t
         }
 
-    except HTTPError as err:
-        return {
-            "status": "False",
-            "message": err
-        }
+        req = await client.post("http://mail-service:5002/api/v1/mail/on-password-forget", json=templ_data,
+                                headers={"Content-Type": "application/json"})
+
+        if req.status_code != 200:
+            print(req.text, req.status_code)
+
+            raise Exception
+
+    return None
 
 
 @app.post("/api/v1/logout")
@@ -642,10 +590,7 @@ async def logout(
     uid = request.headers.get('X-User-Id')
 
     if not uid:
-        return {
-            "status": "False",
-            "message": "Пользователя не существует!"
-        }
+        raise Exception("No uid provided!")
 
     await db.execute(
         update(AuthDB)
@@ -676,110 +621,101 @@ async def registration(
         email: str = Form(...),
         telephone: str = Form(None),
 ):
-    try:
-        if not telephone and role == 2:
-            return {"status": "False",
-                    "message": "Пожалуйста, предоставьте телефонный номер!"}
+    if not telephone and role == 2:
+        raise HTTPException(
+            status_code=400,
+            detail="No phone number provided!",
+        )
 
-        if telephone:
-            try:
-                parsed = phonenumbers.parse(telephone, "RU")
+    if telephone:
+        try:
+            parsed = phonenumbers.parse(telephone, "RU")
 
-                if not phonenumbers.is_valid_number(parsed):
-                    return {"status": "False",
-                            "message": "Некорректный формат телефонного номера!"}
+            if not phonenumbers.is_valid_number(parsed):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Incorrect phone number!",
+                )
 
-                telephone = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+            telephone = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
 
-            except NumberParseException:
-                return {"status": "False",
-                        "message": "Некорректный формат телефонного номера!"}
+        except NumberParseException:
+            raise HTTPException(
+                status_code=400,
+                detail="Incorrect phone number!",
+            )
 
-        hashed_password = await password_hash(password)
-        check = await check_data(password, email, username, session=session)
+    hashed_password = await password_hash(password)
+    check = await check_data(password, email, username, session=session)
 
-        if check["status"] == "False":
-            return {"status": check["status"], "message": check["message"]}
+    if check["status"] == "False":
+        raise HTTPException(
+            status_code=400,
+            detail=check["message"],
+        )
 
-        user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(tz=timezone.utc),
-                      uid=str(uuid.uuid4()),
-                      role=role, status="PENDING", token_version=1, username=username) if role == 1 else AuthDB(
-            email=email,
-            hashed_password=hashed_password,
-            date=datetime.now(
-                tz=timezone.utc),
-            uid=str(uuid.uuid4()),
-            role=role, status="PENDING",
-            token_version=1,
-            username=username, )
-        session.add(user)
+    user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(tz=timezone.utc),
+                  uid=str(uuid.uuid4()),
+                  role=role, status="PENDING", token_version=1, username=username) if role == 1 else AuthDB(
+        email=email,
+        hashed_password=hashed_password,
+        date=datetime.now(
+            tz=timezone.utc),
+        uid=str(uuid.uuid4()),
+        role=role, status="PENDING",
+        token_version=1,
+        username=username, )
+    session.add(user)
 
-        templ_data = {
-            "email_to": email,
-            "username": username,
-        }
+    templ_data = {
+        "email_to": email,
+        "username": username,
+    }
 
+    message = {
+        "message": "Пожалуйста подтвердите вашу электронную почту, перейдя по отправленной ссылке"
+    }
 
-        message = {
-            "status": "True",
-            "message": "Пожалуйста подтвердите вашу электронную почту, перейдя по отправленной ссылке"
-        }
+    if user.role == 2:
 
-        if user.role == 2:
+        resp = await client.post("http://mail-service:5002/api/v1/mail/on-requesting-provider", json=templ_data,
+                                 headers={"Content-Type": "application/json"})
+        if resp.status_code != 200:
+            await session.rollback()
+            print(resp.text, resp.status_code)
+            raise Exception
 
-            resp = await client.post("http://mail-service:5002/api/v1/mail/on-requesting-provider", json=templ_data,
-                                     headers={"Content-Type": "application/json"})
-            if resp.status_code != 200:
-                await session.rollback()
-                return {"status": "False", "message": str(resp.json()["message"])}
+    payload = {
+        "i": user.uid,
+        "t": telephone,
+        "exp": datetime.now(tz=timezone.utc) + timedelta(hours=7),
+        "r": role
+    }
 
-            message = {
-                "status": "True",
-                "message": "Ваша заявление принято на рассмотрение!"
-            }
+    prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
 
-        payload = {
-            "i": user.uid,
-            "t": telephone,
-            "exp": datetime.now(tz=timezone.utc) + timedelta(hours=7),
-            "r": role
-        }
+    token = jwt.encode(payload, prv_key, algorithm="ES256")
 
-        prv_key = os.getenv("SECRET_KEY").replace("\\n", "\n")
+    template_data = {
+        "token": token,
+        "username": username,
+        "email_to": email,
+    }
 
-        token = jwt.encode(payload, prv_key, algorithm="ES256")
+    req = await client.post("http://mail-service:5002/api/v1/mail/on-confirmation-mail", json=template_data,
+                            headers={"Content-Type": "application/json"})
 
-        template_data = {
-            "token": token,
-            "username": username,
-            "email_to": email,
-        }
+    if req.status_code != 200:
+        print(req.text, req.status_code)
+        raise Exception
 
-        await client.post("http://mail-service:5002/api/v1/mail/on-confirmation-mail", json=template_data,
-                          headers={"Content-Type": "application/json"})
+    await session.commit()
 
-        await session.commit()
-
-        return message
-
-
-    except HTTPError as err:
-        return {
-            "status": "False",
-            "message": str(err),
-        }
+    return message
 
 
-async def deletion_task(uid, role
-                        ):
-    try:
-        await publish({"X-User-Id": str(uid), "X-Role": str(role)}, routing_key="v1.queue.deletion")
-        return {"status": "True"}
-    except HTTPError as err:
-        return {
-            "status": "False",
-            "message": str(err),
-        }
+async def deletion_task(uid, role):
+    await publish({"X-User-Id": str(uid), "X-Role": str(role)}, routing_key="v1.queue.deletion")
 
 
 @app.post("/api/v1/delete-user")
@@ -789,49 +725,40 @@ async def delete(
         db: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
 ):
-    try:
-        uid = request.headers.get("X-User-Id")
-        role = request.headers.get("X-Role")
+    uid = request.headers.get("X-User-Id")
+    role = request.headers.get("X-Role")
 
-        if not uid:
-            return {
-                "status": "False",
-                "message": "Пользователя не существует!"
-            }
+    if not uid:
+        raise Exception("No uid provided!")
 
-        background_tasks.add_task(deletion_task, uid, role)
+    background_tasks.add_task(deletion_task, uid, role)
 
-        await db.execute(
-            update(TokenDB)
-            .where(TokenDB.uid == uid)
-            .values(is_expired=True))
+    await db.execute(
+        update(TokenDB)
+        .where(TokenDB.uid == uid)
+        .values(is_expired=True))
 
-        users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
-        user = users.scalar_one_or_none()
-        await db.delete(user)
+    users = await db.execute(select(AuthDB).where(AuthDB.uid == uid))
+    user = users.scalar_one_or_none()
+    await db.delete(user)
 
-        templ_data = {
-            "email_to": user.email,
-            "username": user.username,
-        }
+    templ_data = {
+        "email_to": user.email,
+        "username": user.username,
+    }
 
-        resp = await client.post("http://mail-service:5002/api/v1/mail/on-deletion", json=templ_data,
-                                 headers={"Content-Type": "application/json"})
-        if resp.status_code != 200:
-            await db.rollback()
-            return {"status": "False", "message": str(resp.json()["message"])}
+    resp = await client.post("http://mail-service:5002/api/v1/mail/on-deletion", json=templ_data,
+                             headers={"Content-Type": "application/json"})
+    if resp.status_code != 200:
+        await db.rollback()
+        print(resp.text, resp.status_code)
+        raise Exception
 
-        response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
-        response.delete_cookie(key="refreshment_t")
-        response.delete_cookie(key="access_t")
-        await db.commit()
-        return response
-
-    except HTTPError as e:
-        return {
-            "status": "False",
-            "message": str(e),
-        }
+    response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
+    response.delete_cookie(key="refreshment_t")
+    response.delete_cookie(key="access_t")
+    await db.commit()
+    return response
 
 
 @app.post("/api/v1/login")
@@ -842,34 +769,36 @@ async def login(
         password: str = Form(...),
         email: str = Form(...),
 ):
-    try:
         users = await session.execute(select(AuthDB).where(AuthDB.email == email))
         user = users.scalars().one_or_none()
 
         if not user:
-            return {
-                "status": "False",
-                "message": "Неверный адрес электронной почты или пароль!"
-            }
+            raise HTTPException(
+                status_code=400,
+                detail="Incorrect username or password!",
+            )
 
         res = await password_verify(password, user.hashed_password)
+
         if not res:
-            return {
-                "status": "False",
-                "message": "Неверный адрес электронной почты или пароль!",
-            }
+            raise HTTPException(
+                status_code=400,
+                detail="Incorrect username or password!",
+            )
 
         if user.status != "ACTIVE":
             if user.status == "PENDING":
-                return {
-                    "status": "False",
-                    "message": "На вашу почту была отправлена ссылка для подтверждения регистрации. Пожалуйста, проверьте папку 'Спам' или папку 'Входящие'"
-                }
+                raise HTTPException(
+                    status_code=401,
+                    detail="На вашу почту была отправлена ссылка для подтверждения регистрации. Пожалуйста, проверьте папку 'Спам'",
+                )
+
             if user.status == "VERIFIED":
-                return {
-                    "status": "False",
-                    "message": "Заявка на рассмотрении. Благодарим за ожидание, в скором времени с вами свяжутся"
-                }
+                raise HTTPException(
+                    status_code=401,
+                    detail="Заявка на рассмотрении. Благодарим за ожидание, в скором времени с вами свяжутся"
+                )
+
             if user.status == "REJECTED":
                 background_tasks.add_task(deletion_task, str(user.uid), str(user.role))
                 users = await session.execute(select(AuthDB).where(AuthDB.uid == str(user.uid)))
@@ -877,10 +806,10 @@ async def login(
                 user.token_version += 1
                 await session.delete(user)
                 await session.commit()
-                return {
-                    "status": "False",
-                    "message": "К сожалению, ваша заявка была отклонена."
-                }
+                raise HTTPException(
+                    status_code=401,
+                    detail="К сожалению ваша заявка была отклонена."
+                )
 
         payload = {
             "role": user.role,
@@ -903,16 +832,6 @@ async def login(
         response.set_cookie(key="refreshment_t", value=refreshment_t, httponly=True, secure=True)
         response.set_cookie(key="access_t", value=access_t, secure=True, httponly=True)
 
-        return {"status": "True"}
-
-
-    except HTTPError as err:
-        return {
-            "status": "False",
-            "message": str(err),
-        }
-
-
 @app.post("/api/v1/change-password")
 async def change_password(
         request: Request,
@@ -920,7 +839,6 @@ async def change_password(
         new_password: str = Form(...),
         client: AsyncClient = Depends(get_httpx),
 ):
-    try:
         headers = request.headers
         uid = headers.get("X-User-Id")
 
@@ -928,10 +846,7 @@ async def change_password(
         user = users.scalars().one_or_none()
 
         if not user:
-            return {
-                "status": "False",
-                "message": "Пользователя не существует!"
-            }
+            raise Exception("No such user!")
 
         user.hashed_password = password_hash(new_password)
 
@@ -942,21 +857,13 @@ async def change_password(
 
         resp = await client.post("http://mail-service:5002/api/v1/mail/on-password-change", json=templ_data,
                                  headers={"Content-Type": "application/json"})
+
         if resp.status_code != 200:
             await session.rollback()
-            return {"status": "False", "message": str(resp.json()["message"])}
+            print(resp.text, resp.status_code)
+            raise Exception
 
         await session.commit()
-
-        return {
-            "status": "True",
-        }
-
-    except HTTPError as err:
-        return {
-            "status": "False",
-            "message": str(err),
-        }
 
 
 @app.post("/api/v1/change-email")
@@ -965,7 +872,6 @@ async def change_email(
         session: AsyncSession = Depends(get_db),
         new_email: str = Form(...),
 ):
-    try:
         headers = request.headers
         uid = headers.get("X-User-Id")
         role = headers.get("X-Role")
@@ -974,10 +880,7 @@ async def change_email(
         user = users.scalars().one_or_none()
 
         if not user:
-            return {
-                "status": "False",
-                "message": "Пользователя не существует!"
-            }
+            raise Exception("No such user!")
 
         user.email = new_email
 
@@ -985,16 +888,6 @@ async def change_email(
                       routing_key="v1.queue.changes")
 
         await session.commit()
-
-        return {
-            "status": "True",
-        }
-
-    except HTTPError as err:
-        return {
-            "status": "False",
-            "message": str(err),
-        }
 
 
 @app.post("/api/v1/refresh")
@@ -1004,7 +897,6 @@ async def refresh(
         session: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
 ):
-    try:
 
         refreshment_t = request.cookies.get("refreshment_t")
 
@@ -1017,10 +909,10 @@ async def refresh(
         user = users.scalars().one_or_none()
 
         if not token or not uid:
-            return {
-                "status": "False",
-                "message": "Invalid data!"
-            }
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid data!",
+            )
 
         if token.is_expired:
 
@@ -1043,21 +935,22 @@ async def refresh(
 
             resp = await client.post("http://mail-service:5002/api/v1/mail/on-suspicious-activity", json=templ_data,
                                      headers={"Content-Type": "application/json"})
+
             if resp.status_code != 200:
                 await session.rollback()
-                return {"status": "False", "message": str(resp.json()["message"])}
+                print(resp.text, resp.status_code)
+                raise Exception
 
-            return {
-                "status": "False",
-                "message": "Suspicious activity!"
-            }
+            raise HTTPException(
+                status_code=403,
+                detail="Suspicious activity!",
+            )
 
         if token.expires_at < datetime.now(tz=timezone.utc):
-            return {
-                "status": "False",
-                "message": "Token expired!"
-            }
-
+            raise HTTPException(
+                status_code=401,
+                detail="Token has expired!",
+            )
         else:
 
             token.is_expired = True
@@ -1084,37 +977,23 @@ async def refresh(
             response.set_cookie(key="refreshment_t", value=refreshment_t, httponly=True, secure=True)
             response.set_cookie(key="access_t", value=access_t, secure=True, httponly=True)
 
-            return {"status": "True"}
-
-    except HTTPError as err:
-        return {
-            "status": "False",
-            "message": str(err),
-        }
-
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "DELETE"])
 async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
     path = request.url.path
-    try:
-        target_url = ROUTES.get(path.split("/")[3])
-    except Exception:
-        return {
-            "status": "False",
-            "message": "Invalid URL!"
-        }
-
-    if request.headers.get("X-User-Id") == "-1" and ROUTES_NA.get(path.split("/")[3]) is None:
-        return {
-            "status": "False",
-            "message": "Non-registered user!"
-        }
+    target_url = ROUTES.get(path.split("/")[3])
 
     if not target_url:
-        return {
-            "status": "False",
-            "message": "Invalid URL!"
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Invalid URL!"
+        )
+
+    if request.headers.get("X-User-Id") == "-1" and ROUTES_NA.get(path.split("/")[3]) is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized!"
+        )
 
     exc = {"content-length", "host", "connection", "keep-alive", "proxy-authenticate", "te", "trailers",
            "transfer-encoding", "upgrade"}

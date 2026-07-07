@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Request, Form, UploadFile, File, status
+from fastapi import FastAPI, Depends, Request, UploadFile, File, status, HTTPException, Body, Form
 from fastapi.responses import JSONResponse
 import httpx
 from sqlalchemy import *
@@ -6,6 +6,7 @@ import uuid
 import os
 from datetime import *
 import jwt
+from db_init import get_async_session, engine
 
 from httpx import Limits, AsyncClient, HTTPError
 
@@ -23,16 +24,20 @@ MAX_AD_SIZE = 30 * 1024 * 1024
 class Error(Exception):
     pass
 
-
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
     client = httpx.AsyncClient(limits=limits, timeout=5)
     cl.state.http_client = client
+    factory = get_async_session()
+    app.state.db = factory
     try:
         yield
     finally:
         await client.aclose()
+        await engine.dispose()
+        app.state.task.cancel()
 
+app = FastAPI(lifespan=lifespan)
 
 async def get_httpx() -> httpx.AsyncClient:
     return app.state.http_client
@@ -43,8 +48,15 @@ async def get_db():
     async with factory() as session:
         yield session
 
+@app.exception_handler(Exception)
+async def universal_server_error_handler(request: Request, exc: Exception):
+    print(exc)
 
-app = FastAPI(lifespan=lifespan)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
+    )
 
 
 async def send_request(
@@ -69,9 +81,7 @@ async def send_request(
         "uu",
         "gu",
     ]:
-        return {
-            "Invalid destination!"
-        }
+        raise Exception("Invalid destination")
 
     payload = {
         "thm": "admin",
@@ -91,7 +101,7 @@ async def send_request(
 
     resp = await client.post(url=dest_url[dest[1]], headers=headers, json=data)
 
-    return resp
+    return resp, resp.status_code
 
 
 @app.post("/api/v1/management/web-health/push")
@@ -100,65 +110,43 @@ async def push(
 ):
     from file_proceed import initial_proceed
     if not file.filename.endswith('.zip'):
-        return JSONResponse(
-            status_code=status.HTTP_406_NOT_ACCEPTABLE,
-            content={
-                "status": "False",
-                "message": "Требуется предоставить файл в расширении .zip!",
-            }
+        raise HTTPException(
+            status_code=400,
+            detail="Incorrect file extension (should be .zip)",
         )
 
     if file.size > MAX_AD_SIZE:
-        return JSONResponse(
-            status_code=status.HTTP_406_NOT_ACCEPTABLE,
-            content={
-                "status": "False",
-                "message": "Файл превышает допусимый размер!",
-            }
+        raise HTTPException(
+            status_code=400,
+            detail="The file exceeds allowed size limit!",
         )
 
-    try:
+    name = str(uuid.uuid4())
 
-        name = str(uuid.uuid4())
+    data = await file.read()
 
-        data = await file.read()
-
-        with open(f'temp/{name}.zip', 'wb') as f:
+    with open(f'temp/{name}.zip', 'wb') as f:
             f.write(data)
 
-        data = await initial_proceed(f"{name}.zip")
+    data = await initial_proceed(f"{name}.zip")
 
-        res = await send_request("ap", data)
+    res, res_status = await send_request("ap", data)
 
-        if res.json().get("status") != "True":
-            return JSONResponse(
-                "Something went wrong!",
-            )
+    if res_status != 200:
+            print(res)
+            raise Exception
 
-        os.remove(f'temp/{name}.zip')
-
-        return {
-            "status": "True",
-        }
-
-    except Exception as e:
-        return {
-            "status": "False",
-            "message": str(e)
-        }
 
 
 @app.get("/api/v1/management/web-health/get-p")
 async def get_post(
-        pid: str
+        pid: str = Form(...)
 ):
-    res = await send_request("gp", {"pid": pid})
+    res, res_status = await send_request("gp", {"pid": pid})
 
-    if res.json().get("status") != "True":
-        return JSONResponse(
-            "Something went wrong!",
-        )
-
+    if res_status != 200:
+            print(res)
+            raise Exception
     return res.json()
 
 
@@ -169,28 +157,25 @@ async def get_posts(
         fil: str = None,
         q: str = None,
 ):
-    res = await send_request("sp", {"page": page, "limit": limit, "filter": fil, "query": q})
+    res, res_status = await send_request("sp", {"page": page, "limit": limit, "filter": fil, "query": q})
 
-    if res.json().get("status") != "True":
-        return JSONResponse(
-            "Something went wrong!",
-        )
+    if res_status != 200:
+            print(res)
+            raise Exception
 
     return res.json()
 
 
 @app.get("/api/v1/management/web-health/get-u")
 async def get_user(
-        uid: str
+        uid: str = Form(...)
 
 ):
-    res = await send_request("gp", {"uid": uid})
+    res, res_status = await send_request("gu", {"uid": uid})
 
-    if res.json().get("status") != "True":
-        return {
-            "status": "False",
-            "message": res.json()
-        }
+    if res_status != 200:
+            print(res)
+            raise Exception
 
     return res.json()
 
@@ -213,60 +198,44 @@ async def manipulate(
                     "pid": data["pid"],
                 }
 
-                res = await send_request("dp", payload)
+                res, res_status = await send_request("dp", payload)
 
-                if res.json().get("status") != "True":
-                    return {
-                        "status": "False",
-                        "message": res.json()
-                    }
-
-                return res.json()
+                if res_status != 200:
+                    print(res)
+                    raise Exception
 
             case "da":
                 payload = {
                     "uid": data["uid"],
                 }
 
-                res = await send_request("da", payload)
+                res, res_status = await send_request("da", payload)
 
-                if res.json().get("status") != "True":
-                    return {
-                        "status": "False",
-                        "message": res.json()
-                    }
-
-                return res.json()
+                if res_status != 200:
+                    print(res)
+                    raise Exception
 
             case "up":
                 payload = {
                     "changed_data": data["changed_data"],
                 }
 
-                res = await send_request("up", payload)
+                res, res_status = await send_request("up", payload)
 
-                if res.json().get("status") != "True":
-                    return {
-                        "status": "False",
-                        "message": res.json()
-                    }
+                if res_status != 200:
+                    print(res)
+                    raise Exception
 
-                return res.json()
-
-            case "up":
+            case "uu":
                 payload = {
                     "changed_data": data["changed_data"],
                 }
 
-                res = await send_request("up", payload)
+                res, res_status = await send_request("uu", payload)
 
-                if res.json().get("status") != "True":
-                    return {
-                        "status": "False",
-                        "message": res.json()
-                    }
-
-                return res.json()
+                if res_status != 200:
+                    print(res)
+                    raise Exception
 
     except KeyError:
 
@@ -274,35 +243,25 @@ async def manipulate(
             "Отсутствует один, или несколько обязательных аргументов!"
         )
 
-    except:
-        return JSONResponse(
-            "Something went wrong!",
-        )
-
-
 @app.post("/api/v1/management/web-health/request")
-async def request(
-        data: str,
+async def request_make(
+        theme: str = Body(...),
+        uid: str = Body(...),
+        details: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
-    try:
+
         db.add(
-            TicketsDB(id=str(uuid.uuid4()), author_id=str(data["author_id"]), ticket_status="В РАБОТЕ",
-                      theme=str(data["theme"]),
-                      text=str(data["text"]), date_created=datetime.now(tz=timezone.utc),)
+            TicketsDB(id=str(uuid.uuid4()), author_id=uid, ticket_status="ACTIVE",
+                      theme=theme,
+                      details=details, date_created=datetime.now(tz=timezone.utc),)
         )
 
         await db.commit()
 
-    except Exception:
-        return JSONResponse(
-            "Something went wrong!",
-        )
-
-
 @app.post("/api/v1/management/web-health/request-take")
 async def request_take(
-        data: str,
+        data: str = Form(...),
         db: AsyncSession = Depends(get_db),
 ):
 
@@ -310,45 +269,66 @@ async def request_take(
     pass
 
 
-@app.post("/api/v1/management/web-health/get-request")
-async def get_requests(
+@app.get("/api/v1/management/web-health/get-request")
+async def requests_get(
         page: int = 1,
         limit: int = 10,
         db: AsyncSession = Depends(get_db),
 
 ):
-    offset = limit * page
-    count = db.scalar(select(func.count()).select_from(TicketsDB))
+    offset = limit * (page - 1)
+    count = await db.scalar(select(func.count()).select_from(TicketsDB))
 
-    res = await db.scalars(select(TicketsDB).offset(offset).limit(limit))
+    res = await db.execute(select(TicketsDB).offset(offset).limit(limit))
 
     return {
         "count": count,
-        "data": [res.all()]
+        "data": [res.scalars().all()]
     }
 
 
 @app.post("/api/v1/management/web-health/request-c")
 async def requests_close(
-        request_id: str,
+        request_id: str = Form(...),
         db: AsyncSession = Depends(get_db),
 
 ):
 
     tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == request_id))
     ticket = tickets.scalar_one_or_none()
+
+    if not ticket:
+        raise HTTPException(status_code=404, detail="NO_SUCH_TICKET")
+
     await db.delete(ticket)
     await db.commit()
 
-    return JSONResponse(
-        "True"
-    )
-
 @app.post("/api/v1/management/web-health/us-verify")
 async def user_verify(
-        request_id: str,
+        request_id: str = Form(...),
         db: AsyncSession = Depends(get_db),
 
 ):
 
-    pass
+    if not request_id:
+        raise Exception(
+            "No request_id provided!"
+        )
+
+    tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == request_id))
+    ticket = tickets.scalar_one_or_none()
+
+    if not ticket:
+        raise Exception(
+            "No such ticket!"
+        )
+
+    payload = {
+        "user_id": ticket.author_id,
+    }
+
+    res, res_status = await send_request("va", payload)
+
+    if res_status != 200:
+        print(res)
+        raise Exception

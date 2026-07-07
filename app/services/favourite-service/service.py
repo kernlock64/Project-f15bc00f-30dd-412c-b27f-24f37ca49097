@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, Request, Form
+from fastapi import FastAPI, Depends, Request, Form, status
+from fastapi.responses import JSONResponse
 import httpx
 from sqlalchemy import *
 import uuid
@@ -77,6 +78,16 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 
 app = FastAPI(lifespan=lifespan)
 
+@app.exception_handler(Exception)
+async def universal_server_error_handler(request: Request, exc: Exception):
+
+    print(exc)
+
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
+    )
 
 async def get_db():
     factory = app.state.db
@@ -92,13 +103,8 @@ async def delete_user(
     async with eng() as db:
         await db.execute(delete(cls).where(cls.id == uid))
         await db.commit()
-    return {
-        "status": "True",
-    }
-
 
 async def listen_deletion():
-    try:
         async with app.state.d_queue.iterator() as queue_iter:
             async for message in queue_iter:
                 async with message.process():
@@ -106,8 +112,6 @@ async def listen_deletion():
                     uid = data["X-User-Id"]
 
                     await delete_user(uid, app.state.db)
-    except Exception as e:
-        print(e)
 
 async def changes_favourites(pid, eng, changed_data: dict) -> dict:
     cls = FavouriteDB
@@ -118,28 +122,21 @@ async def changes_favourites(pid, eng, changed_data: dict) -> dict:
 
         for key, value in changed_data.items():
             if not key in cls.__table__.columns and key not in ["pid", "uid", "id"]:
-                return {
-                    "status": "False",
-                    "message": "No such parameter!",
-                }
+                raise Exception("No such parameter!")
 
             setattr(post, key, value)
 
-    return {
-        "status": "True",
-    }
+            await db.commit()
+
+    return None
 
 async def deletion_favourites(pid, eng):
     cls = FavouriteDB
     async with eng() as db:
         await db.execute(delete(cls).where(cls.pid == pid))
         await db.commit()
-    return {
-        "status": "True",
-    }
 
 async def listen_changes():
-    try:
         async with app.state.d_queue.iterator() as queue_iter:
             async for message in queue_iter:
                 async with message.process():
@@ -150,9 +147,6 @@ async def listen_changes():
 
                     if data["action"] == "post_changes":
                         await changes_favourites(data["pid"], app.state.db, data["changes"])
-
-    except Exception as e:
-        print(e)
 
 
 async def main():
@@ -167,19 +161,13 @@ async def get_favourites(
         request: Request,
         db: AsyncSession = Depends(get_db),
 ):
-    try:
         user_id = request.headers["X-User-Id"]
         fav = await db.execute(select(FavouriteDB).where(FavouriteDB.uid == str(user_id)))
         return {
-            "status": "True",
             "favourites": [
                 i for i in fav.scalars().all()
             ]
         }
-    except HTTPError as e:
-        return {"status": "False",
-                "message": str(e), }
-
 
 @app.get("/api/v1/favourites/is-favourite")
 async def is_favourite(
@@ -187,20 +175,13 @@ async def is_favourite(
         db: AsyncSession = Depends(get_db),
         post_id: int = Form(...),
 ):
-    try:
         uid = request.headers["X-User-Id"]
         res = await db.execute(select(FavouriteDB.uid).where(FavouriteDB.pid == str(post_id)))
         favourite_uid = res.scalar_one_or_none()
         if favourite_uid != uid:
-            return {
-                "status": "False",
-            }
-        return {
-            "status": "True",
-        }
-    except HTTPError as e:
-        return {"status": "False",
-                "message": str(e), }
+            raise Exception("No such post!")
+
+        return None
 
 
 @app.post("/api/v1/favourites/{post_id}")
@@ -210,7 +191,6 @@ async def favourite_manager(
         db: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
 ):
-    try:
         uid = request.headers["X-User-Id"]
         res = await db.execute(
             select(FavouriteDB).where(FavouriteDB.uid == str(uid), FavouriteDB.pid == str(post_id)))
@@ -220,10 +200,6 @@ async def favourite_manager(
         else:
             return await delete_favourite(post_id, uid, db)
 
-    except HTTPError as e:
-        return {"status": "False",
-                "message": str(e), }
-
 
 async def add_favourite(
         post_id: int,
@@ -232,13 +208,18 @@ async def add_favourite(
         client: AsyncClient,
 ):
 
-    try:
         c = cache.get(post_id)
         if not c:
             resp = await client.get("http://post-service:5003/api/v1/posts/get-post")
+
+            if resp.status_code != 200:
+                print(resp.text, resp.status_code)
+                raise Exception
+
             cache[post_id] = resp.json()
 
             r = resp.json()
+
             db.add(
                 FavouriteDB(id=str(uuid.uuid4()), pid=post_id, uid=user_id, p_title=str(r["p_title"]),
                             p_image=str(r["p_image"])))
@@ -248,25 +229,14 @@ async def add_favourite(
             db.add(
                 FavouriteDB(id=str(uuid.uuid4()), pid=post_id, uid=user_id, p_title=str(c["p_title"]),
                             p_image=str(c["p_image"])))
+
             await db.commit()
-
-        return {"status": "True"}
-    except HTTPError as e:
-        return {"status": "False",
-                "message": str(e), }
-
 
 async def delete_favourite(
         post_id: int,
         user_id: str,
         db: AsyncSession,
 ):
-    try:
         await db.execute(
             delete(FavouriteDB).where(FavouriteDB.uid == str(user_id), FavouriteDB.pid == str(post_id)))
         await db.commit()
-        return {"status": "True"}
-
-    except HTTPError as e:
-        return {"status": "False",
-                "message": str(e), }

@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, Request, HTTPException
+from fastapi import FastAPI, Depends, Request, HTTPException, status
+from fastapi.responses import JSONResponse
 import httpx
 from starlette.responses import StreamingResponse
 from httpx import Limits, AsyncClient
@@ -27,12 +28,22 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 
 app = FastAPI(lifespan=lifespan)
 
+@app.exception_handler(Exception)
+async def universal_server_error_handler(request: Request, exc: Exception):
+
+    print(exc)
+
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
+    )
+
 @app.get("/api/v1/media/get-image/{filename:path}")
 async def get_image(filename: str,
                     request: Request,
               client: AsyncClient = Depends(get_httpx)):
 
-    try:
         req = client.build_request(
             method=request.method,
             url=f"http://filer:8888/{filename}",
@@ -46,11 +57,7 @@ async def get_image(filename: str,
             status_code=request.status_code,
             headers=request.headers,
         )
-    except HTTPException as e:
-        return {
-            "status": "False",
-            "message": str(e),
-        }
+
 
 @app.post("/api/v1/media/add-image/{ext}")
 async def add_image(
@@ -58,14 +65,13 @@ async def add_image(
         request: Request,
         client: AsyncClient = Depends(get_httpx),
         p_directory: str = None):
-    try:
 
         key = request.headers.get("X-Key")
         if key != MEDIA_KEY:
-            return {
-                "status": "False",
-                "message": "Unauthorized!",
-            }
+            raise HTTPException(
+                status_code=403,
+                detail="FORBIDDEN",
+            )
 
         name = str(request.headers.get("X-Name")) + f".{ext}"
 
@@ -79,13 +85,7 @@ async def add_image(
         ))
 
         return {
-            "status": "True",
             "filename": name,
-        }
-    except HTTPException as e:
-        return {
-            "status": "False",
-            "message": str(e),
         }
 
 
@@ -93,16 +93,15 @@ async def add_image(
 async def delete_image(
         filename: str, request: Request,
         client: AsyncClient = Depends(get_httpx)):
-    try:
 
         directory = request.headers.get("X-Directory")
 
         key = request.headers.get("X-Key")
         if key != MEDIA_KEY:
-            return {
-                "status": "False",
-                "message": "Unauthorized!",
-            }
+            raise HTTPException(
+                status_code=403,
+                detail="FORBIDDEN",
+            )
 
         if directory:
             url=f"http://filer:8888/{filename}?recursive=true"
@@ -115,29 +114,18 @@ async def delete_image(
             content=request.stream()
         ))
 
-        return {
-            "status": "True",
-        }
-    except HTTPException as e:
-        return {
-            "status": "False",
-            "message": str(e),
-        }
-
-
 @app.post("/api/v1/media/change-image/{filename}")
 async def change_image(
         filename: str,
         request: Request,
         client: AsyncClient = Depends(get_httpx), ):
-    try:
 
         key = request.headers.get("X-Key")
         if key != MEDIA_KEY:
-            return {
-                "status": "False",
-                "message": "Unauthorized!",
-            }
+            raise HTTPException(
+                status_code=403,
+                detail="FORBIDDEN",
+            )
 
         await client.send(client.build_request(
             method="PUT",
@@ -145,13 +133,4 @@ async def change_image(
             content=request.stream(),
             headers={"Content-Type": "application/octet-stream"}
         ))
-
-        return {
-            "status": "True",
-        }
-    except HTTPException as e:
-        return {
-            "status": "False",
-            "message": str(e),
-        }
 

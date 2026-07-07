@@ -3,7 +3,7 @@ from typing import List
 
 from geoalchemy2 import Geometry
 from db_init import Base
-from sqlalchemy import Integer, Text, JSON, ForeignKey, DateTime
+from sqlalchemy import Integer, Text, JSON, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 
 class PostDB(Base):

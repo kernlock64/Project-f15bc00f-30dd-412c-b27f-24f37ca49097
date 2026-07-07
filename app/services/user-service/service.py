@@ -4,7 +4,8 @@ import json
 import aiofiles
 import io
 
-from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body
+from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body, status, HTTPException
+from fastapi.responses import JSONResponse
 import httpx
 from datetime import datetime, timezone
 from sqlalchemy import *
@@ -90,6 +91,17 @@ async def get_avatar():
 app = FastAPI(lifespan=lifespan)
 
 
+@app.exception_handler(Exception)
+async def universal_server_error_handler(request: Request, exc: Exception):
+    print(exc)
+
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
+    )
+
+
 async def get_db():
     factory = app.state.db
     async with factory() as session:
@@ -112,14 +124,14 @@ async def delete_user(
 
         client = app.state.http_client
 
-        await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{avatar}",
-                            headers={"X-Key": MEDIA_KEY})
+        resp = await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{avatar}",
+                                   headers={"X-Key": MEDIA_KEY})
+
+        if resp.status_code != 200:
+            print(resp.text, resp.status_code)
 
         await db.commit()
 
-    return {
-        "status": "True",
-    }
 
 async def change_email(
         uid: str,
@@ -135,38 +147,28 @@ async def change_email(
         user.email = changed
         await db.commit()
 
-    return {
-        "status": "True",
-    }
-
 
 async def listen_deletion():
-    try:
-        async with app.state.d_queue.iterator() as queue_iter:
-            async for message in queue_iter:
-                async with message.process():
-                    data = json.loads(message.body.decode())
-                    uid = data["X-User-Id"]
-                    role = data["X-Role"]
+    async with app.state.d_queue.iterator() as queue_iter:
+        async for message in queue_iter:
+            async with message.process():
+                data = json.loads(message.body.decode())
+                uid = data["X-User-Id"]
+                role = data["X-Role"]
 
-                    await delete_user(uid, role, app.state.db)
-    except Exception as e:
-        print(e)
+                await delete_user(uid, role, app.state.db)
 
 
 async def listen_changes():
-    try:
-        async with app.state.c_queue.iterator() as queue_iter:
-            async for message in queue_iter:
-                async with message.process():
-                    data = json.loads(message.body.decode())
-                    uid = data["X-User-Id"]
-                    role = data["X-Role"]
-                    value = data["X-Changed-Value"]
+    async with app.state.c_queue.iterator() as queue_iter:
+        async for message in queue_iter:
+            async with message.process():
+                data = json.loads(message.body.decode())
+                uid = data["X-User-Id"]
+                role = data["X-Role"]
+                value = data["X-Changed-Value"]
 
-                    await change_email(uid, role, app.state.db, value)
-    except Exception as e:
-        print(e)
+                await change_email(uid, role, app.state.db, value)
 
 
 async def main():
@@ -181,92 +183,130 @@ async def manipulate(
         request: Request,
         db: AsyncSession = Depends(get_db),
         data: dict = Body,
+        client: AsyncClient = Depends(get_httpx),
 ):
     if request.headers.get("X-User-Id") != '0' or request.headers.get("X-Role") != '0':
-        return {
-            "status": "False",
-            "message": "Unauthorized access!"
-        }
+        raise HTTPException(
+            status_code=403,
+            detail="FORBIDDEN",
+        )
 
     destination = request.headers.get("X-Scope")
 
     if destination[1] != "u":
-        return {
-            "status": "False",
-            "message": "Incorrect scope!"
-        }
-
+        raise HTTPException(
+            status_code=400,
+            detail="MISS_SCOPE",
+        )
     else:
-        try:
-            match destination[0]:
+        match destination[0]:
 
-                case "u":
-                    metadata = data["metadata"]
-                    changed_data = data["changed_data"]
+            case "u":
+                metadata = data["metadata"]
+                changed_data = data["changed_data"]
 
-                    cls = CustomersDB if metadata["role"] == "1" else ProdDB
+                cls = CustomersDB if metadata["role"] == "1" else ProdDB
 
-                    user_id = metadata["user_id"]
+                user_id = metadata["user_id"]
 
-                    users = await db.execute(select(cls).where(cls.id == str(user_id)))
+                users = await db.execute(select(cls).where(cls.id == str(user_id)))
+                user = users.scalar_one_or_none()
+
+                if not user:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="NO_SUCH_USER",
+                    )
+
+                for key, value in changed_data.items():
+                    if not key in cls.__table__.columns and key not in ["id", "image", "email", "date_created"]:
+                        raise HTTPException(
+                            status_code=404,
+                            detail="NO_SUCH_PARAMETER",
+                        )
+                    setattr(user, key, value)
+
+                await db.commit()
+
+            case "g":
+                metadata = data["metadata"]
+
+                uid = str(metadata["user_id"])
+                role = str(metadata["role"])
+
+                res1 = await client.get(f"http://favourite-service:5005/api/v1/favourites/get-favourites",
+                                        headers=request.headers)
+
+                if res1.status_code != 200:
+                    print(res1.text, res1.status_code)
+                    raise Exception
+
+                if role == "1":
+
+                    if not await db.execute(exists(CustomersDB).where(CustomersDB.id == uid)):
+                        raise HTTPException(
+                            status_code=404,
+                            detail="NO_SUCH_USER",
+                        )
+
+                    users = await db.execute(select(CustomersDB).where(CustomersDB.id == uid))
                     user = users.scalar_one_or_none()
 
-                    if not user:
+                    if user:
                         return {
-                            "status": "False",
-                            "message": "No such user!",
+                            "id": str(user.id),
+                            "username": str(user.username),
+                            "email": str(user.email),
+                            "image": str(user.image),
+                            "date_created": str(user.date_created),
+                            "full_name": str(user.full_name),
+                            "favourites": str(res1.json()["favourites"]),
                         }
 
-                    for key, value in changed_data.items():
-                        if not key in cls.__table__.columns and key not in ["id", "image", "email", "date_created"]:
-                            return {
-                                "status": "False",
-                                "message": "No such parameter!",
-                            }
-                        setattr(user, key, value)
+                    else:
+                        raise HTTPException(
+                            status_code=404,
+                            detail="NO_SUCH_USER",
+                        )
 
-                    await db.commit()
+                if role == "2":
 
-                case "g":
-                    metadata = data["metadata"]
+                    users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
+                    user = users.scalar_one_or_none()
 
-                    uid = str(metadata["user_id"])
-                    role = str(metadata["role"])
+                    res2 = await client.get(f"http://post-service:5003/api/v1/posts/search?fil=author_id={uid}",
+                                            headers=request.headers)
 
-                    if role == "1":
-
-                        if await db.execute(exists(CustomersDB).where(CustomersDB.id == uid)):
-                            return {
-                                "status": "True",
-                            }
-
-                    if role == "2":
-
-                        users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
-                        user = users.scalar_one_or_none()
-                        if user:
-                            return {
-                                "status": "True",
-                                "author_name": str(user.name),
-                                "author_image": str(user.image),
-                            }
-
-                    return {
-                        "status": "False",
-                        "message": "Something went wrong!",
-                    }
+                    if res2.status_code != 200:
+                        print(res2.text, res2.status_code)
+                        raise Exception
 
 
+                    if user:
+                        return {
+                            "id": str(user.id),
+                            "name": str(user.name),
+                            "email": str(user.email),
+                            "image": str(user.image),
+                            "date_created": str(user.date_created),
+                            "full_name": str(user.full_name),
+                            "telephone": str(user.telephone),
+                            "description": str(user.description),
+                            "delivery_description": str(user.delivery_description),
+                            "favourites": str(res1.json()["favourites"]),
+                            "posts": str(res2.json()["posts"]),
+                        }
+                    else:
+                        raise HTTPException(
+                            status_code=404,
+                            detail="NO_SUCH_USER",
+                        )
 
-        except Exception as e:
-            return {
-                "status": "False",
-                "message": str(e)
-            }
+    raise HTTPException(
+        status_code=400,
+        detail="MISS_SCOPE",
+    )
 
-        return {
-            "status": "True",
-        }
 
 @app.get("/api/v1/users/user-check")
 async def user_check(
@@ -282,6 +322,10 @@ async def user_check(
             return {
                 "status": "True",
             }
+        raise HTTPException(
+            status_code=404,
+            detail="NO_SUCH_USER",
+        )
 
     if role == "2":
 
@@ -289,16 +333,15 @@ async def user_check(
         user = users.scalar_one_or_none()
         if user:
             return {
-                "status": "True",
                 "author_name": str(user.name),
                 "author_image": str(user.image),
             }
+        raise HTTPException(
+            status_code=404,
+            detail="NO_SUCH_USER",
+        )
 
-    return {
-        "status": "False",
-        "message": "Something went wrong!",
-    }
-
+    raise Exception
 
 @app.get("/api/v1/users/get-user")
 async def get_user(
@@ -311,14 +354,20 @@ async def get_user(
 
     res1 = await client.get(f"http://favourite-service:5005/api/v1/favourites/get-favourites", headers=request.headers)
 
-    if res1.json()["status"] != "True":
-        return {
-            "status": "False",
-            "message": "Something went wrong!",
-        }
+    if res1.status_code != 200:
+        print(res1.text, res1.status_code)
+        raise Exception
+
     if role == "1":
         users = await db.execute(select(CustomersDB).where(CustomersDB.id == uid))
         user = users.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="NO_SUCH_USER",
+            )
+
         return {
             "id": str(user.id),
             "username": str(user.username),
@@ -331,15 +380,21 @@ async def get_user(
     if role == "2":
 
         res2 = await client.get(f"http://post-service:5003/api/v1/posts/search?fil=author_id={uid}",
-                           headers=request.headers)
-        if res2.json()["status"] != "True":
-            return {
-                "status": "False",
-                "message": "Something went wrong!",
-            }
+                                headers=request.headers)
+
+        if res2.status_code != 200:
+            print(res2.text, res2.status_code)
+            raise Exception
 
         users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
         user = users.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="NO_SUCH_USER",
+            )
+
         return {
             "id": str(user.id),
             "name": str(user.name),
@@ -353,11 +408,8 @@ async def get_user(
             "favourites": str(res1.json()["favourites"]),
             "posts": str(res2.json()["posts"]),
         }
-    else:
-        return {
-            "status": "False",
-            "message": "Unknown error!",
-        }
+
+    raise Exception
 
 
 @app.get("/api/v1/users/producers/{uid}")
@@ -368,15 +420,21 @@ async def get_user_prod(
         client: AsyncClient = Depends(get_httpx),
 ):
     res = await client.get(f"http://post-service:5003/api/v1/posts/search?fil=author_id={uid}",
-                           headers=request.headers)
-    if res.json()["status"] != "True":
-        return {
-            "status": "False",
-            "message": "Something went wrong!",
-        }
+                            headers=request.headers)
+
+    if res.status_code != 200:
+        print(res.text, res.status_code)
+        raise Exception
 
     users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
     user = users.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="NO_SUCH_USER",
+        )
+
     return {
         "id": str(user.id),
         "name": str(user.name),
@@ -400,7 +458,7 @@ async def add_user(
         role: str = Form(...),
         uid: str = Form(...),
         telephone: str = Form(...),
-        avatar = Depends(get_avatar),
+        avatar=Depends(get_avatar),
 ):
     async def read_file():
         stream = io.BytesIO(avatar)
@@ -419,10 +477,9 @@ async def add_user(
     resp = await client.send(req, stream=True)
 
     if resp.status_code != 200:
-        return {
-            "status": "False",
-            "message": "Error adding image",
-        }
+        print(resp.text, resp.status_code)
+        raise Exception
+
     else:
         user = CustomersDB(id=uid, username=username, email=email, date_created=datetime.now(timezone.utc),
                            image=str(filename + '.' + "png")) if role == "1" else ProdDB(
@@ -433,10 +490,6 @@ async def add_user(
             telephone=telephone, )
         db.add(user)
         await db.commit()
-
-        return {
-            "status": "True",
-        }
 
 
 @app.post("/api/v1/users/change-userdata")
@@ -454,16 +507,16 @@ async def change_userdata(
 
     for key, value in changed_data.items():
         if not key in cls.__table__.columns.keys() or key in ["id", "image", "email", "date_created"]:
-            return {
-                "status": "False",
-                "message": "No such parameter!",
-            }
+            raise HTTPException(
+                status_code=404,
+                detail="MISS_PARAMETER",
+            )
+
         setattr(user, key, value)
 
         await db.commit()
-    return {
-        "status": "True",
-    }
+
+    return None
 
 
 @app.post("/api/v1/users/change-avatar")
@@ -493,39 +546,35 @@ async def change_avatar(
     resp = await client.send(req, stream=True)
 
     if resp.status_code != 200:
-        return {
-            "status": "False",
-            "message": "Error adding image",
-        }
-    else:
-        return {
-            "status": "True",
-        }
-
+        print(resp.text, resp.status_code)
+        raise Exception
 
 @app.post("/api/v1/users/support-request")
 async def report(
         request: Request,
-        data: str,
+        data: str = Form(...),
         client: AsyncClient = Depends(get_httpx),
 ):
     uid = request.headers.get("X-User-Id")
 
     if len(data) > 1500:
-        return {
-            "status": "False",
-            "message": "Something went wrong!",
-        }
+        raise HTTPException(
+            status_code=400,
+            detail="MISS_REQUIREMENT",
+        )
 
     metadata = {
         "uid": uid,
-        "role": request.headers.get("X-Role"),
-        "date_created": datetime.now(timezone.utc),
-        "data": data,
+        "details": {
+            "role": request.headers.get("X-Role"),
+            "text": data, },
+        "theme": "SUPPORT",
     }
 
-    await client.post("http://admin-service:5006/api/v1/management/web-health/request", data=metadata)
+    resp = await client.post("http://admin-service:5006/api/v1/management/web-health/request", json=metadata)
 
-    return {
-            "status": "True",
-        }
+    if resp.status_code != 200:
+        print(resp.text, resp.status_code)
+        raise Exception
+
+    return None
