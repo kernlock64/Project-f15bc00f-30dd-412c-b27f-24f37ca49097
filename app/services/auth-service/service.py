@@ -374,7 +374,18 @@ async def user_confirm(
             "uid": user.uid,
         }
 
-        req = await client.post("http://admin-service:5006/api/v1/management/web-health/request", data=payload)
+        templ_data = {
+            "email_to": user.email,
+            "username": user.username,
+        }
+
+        resp = await client.post("http://mail-service:5002/api/v1/mail/on-requesting-provider", json=templ_data,
+                                 headers={"Content-Type": "application/json"})
+        if resp.status_code != 200:
+            print(resp.text, resp.status_code)
+            raise Exception
+
+        req = await client.post("http://admin-service:5006/api/v1/management/web-health/request", json=payload)
         if req.status_code != 200:
             print(req.text, req.status_code)
             raise Exception
@@ -392,15 +403,18 @@ async def user_confirm(
 
         raise Exception
 
-    req2 = await client.post("http://mail-service:5002/api/v1/mail/on-registration", json={
-        "username": user.username,
-    },
-                             headers={"Content-Type": "application/json"})
+    if user.role == "1":
 
-    if req2.status_code != 200:
-        print(req2.text, req2.status_code)
+        req2 = await client.post("http://mail-service:5002/api/v1/mail/on-registration", json={
+                "email_to": user.email,
+                "username": user.username,
+            },
+                                 headers={"Content-Type": "application/json"})
 
-        raise Exception
+        if req2.status_code != 200:
+            print(req2.text, req2.status_code)
+
+            raise Exception
 
 async def check_data(password, email, username, session: AsyncSession):
     check_flag = False
@@ -448,7 +462,7 @@ async def manipulate(
         background_tasks: BackgroundTasks,
         db: AsyncSession = Depends(get_db),
         data: dict = Body,
-        client: AsyncClient = Depends(get_db),
+        client: AsyncClient = Depends(get_httpx),
 ):
     if request.headers.get("X-User-Id") != '0' or request.headers.get("X-Role") != '0':
         raise HTTPException(
@@ -469,7 +483,7 @@ async def manipulate(
 
             case "v":
                 metadata = data["metadata"]
-                cls = AuthDB(metadata)
+                cls = AuthDB
 
                 user_id = metadata["user_id"]
 
@@ -483,6 +497,7 @@ async def manipulate(
                     )
 
                 user.status = "ACTIVE"
+
 
                 templ_data = {
                     "email_to": user.email,
@@ -537,10 +552,11 @@ async def manipulate(
 
                 return response
 
-    raise HTTPException(
-        status_code=404,
-        detail="Incorrect scope!",
-    )
+            case _:
+                raise HTTPException(
+                status_code=404,
+                detail="Incorrect scope!",
+            )
 
 
 @app.post("/api/v1/forgot-password")
@@ -667,23 +683,9 @@ async def registration(
         username=username, )
     session.add(user)
 
-    templ_data = {
-        "email_to": email,
-        "username": username,
-    }
-
     message = {
         "message": "Пожалуйста подтвердите вашу электронную почту, перейдя по отправленной ссылке"
     }
-
-    if user.role == 2:
-
-        resp = await client.post("http://mail-service:5002/api/v1/mail/on-requesting-provider", json=templ_data,
-                                 headers={"Content-Type": "application/json"})
-        if resp.status_code != 200:
-            await session.rollback()
-            print(resp.text, resp.status_code)
-            raise Exception
 
     payload = {
         "i": user.uid,

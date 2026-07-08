@@ -398,11 +398,12 @@ async def manipulate(
                 return {
                     "posts": result.hits if result.hits else [],
                 }
-        raise HTTPException(
+
+            case _:
+                raise HTTPException(
             status_code=404,
             detail="Incorrect scope!",
         )
-
 
 @app.get("/api/v1/posts/search")
 async def search_posts(
@@ -570,7 +571,7 @@ async def report_post(
             "theme": "REPORT"
         }
 
-        await client.post("http://admin-service:5006/api/v1/management/web-health/request", data=metadata)
+        await client.post("http://admin-service:5006/api/v1/management/web-health/request", json=metadata)
 
         return None
 
@@ -596,7 +597,6 @@ async def get_posts(
 
     if category["is_leaf"]:
         return {
-            "status": "True",
             "category_id": category_id,
             "title": category["name"],
             "metadata": {

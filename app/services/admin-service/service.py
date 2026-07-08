@@ -130,6 +130,18 @@ async def push(
 
     data = await initial_proceed(f"{name}.zip")
 
+    try:
+        if data["metadata"]["status"] != "True":
+            raise HTTPException(
+                status_code=400,
+                detail="Incorrect file upload! Check the documentation",
+            )
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Incorrect file upload! Check the documentation",
+        )
+
     res, res_status = await send_request("ap", data)
 
     if res_status != 200:
@@ -303,7 +315,7 @@ async def requests_close(
     await db.delete(ticket)
     await db.commit()
 
-@app.post("/api/v1/management/web-health/us-verify")
+@app.post("/api/v1/management/web-health/user-verify")
 async def user_verify(
         request_id: str = Form(...),
         db: AsyncSession = Depends(get_db),
@@ -330,5 +342,5 @@ async def user_verify(
     res, res_status = await send_request("va", payload)
 
     if res_status != 200:
-        print(res)
+        print(res, res_status)
         raise Exception

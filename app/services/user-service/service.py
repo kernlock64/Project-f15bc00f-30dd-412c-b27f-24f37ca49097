@@ -301,11 +301,11 @@ async def manipulate(
                             status_code=404,
                             detail="NO_SUCH_USER",
                         )
-
-    raise HTTPException(
-        status_code=400,
-        detail="MISS_SCOPE",
-    )
+            case _:
+                raise HTTPException(
+                status_code=404,
+                detail="Incorrect scope!",
+            )
 
 
 @app.get("/api/v1/users/user-check")
