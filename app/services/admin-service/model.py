@@ -18,4 +18,4 @@ class PriceListsDB(Base):
     __tablename__ = "admin-service-price-lists"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
-    name: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)

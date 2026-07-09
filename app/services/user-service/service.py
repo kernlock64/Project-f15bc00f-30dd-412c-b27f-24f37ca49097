@@ -92,7 +92,7 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.exception_handler(Exception)
-async def universal_server_error_handler(request: Request, exc: Exception):
+async def universal_server_error_handler(exc: Exception):
     print(exc)
 
     return JSONResponse(
@@ -227,6 +227,7 @@ async def manipulate(
                     setattr(user, key, value)
 
                 await db.commit()
+                return None
 
             case "g":
                 metadata = data["metadata"]
@@ -301,6 +302,7 @@ async def manipulate(
                             status_code=404,
                             detail="NO_SUCH_USER",
                         )
+                return None
             case _:
                 raise HTTPException(
                 status_code=404,

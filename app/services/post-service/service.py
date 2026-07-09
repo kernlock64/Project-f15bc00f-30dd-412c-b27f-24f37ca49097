@@ -124,7 +124,7 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.exception_handler(Exception)
-async def universal_server_error_handler(request: Request, exc: Exception):
+async def universal_server_error_handler(exc: Exception):
     print(exc)
 
     return JSONResponse(
@@ -150,9 +150,9 @@ async def delete_user(
 ):
     cls = PostDB
     async with eng() as db:
-        db_r = await db.execute(select(cls.directory_name).where(cls.id == uid))
-        image_ids = await db_r.scalars().all()
-        await db.execute(delete(cls).where(cls.id == uid))
+        db_r = await db.execute(select(cls.directory_name).where(cls.author_id == uid))
+        image_ids = db_r.scalars().all()
+        await db.execute(delete(cls).where(cls.author_id == uid))
         client = app.state.http_client
         for i in image_ids:
             res = await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{i}",
@@ -208,7 +208,30 @@ async def manipulate(
 
             case "d":
                 metadata = data["metadata"]
-                post_id = metadata["post_id"]
+                post_id = metadata.get("post_id")
+
+                if not post_id:
+                    price_list_name = metadata.get("price-list-name")
+
+                    if not price_list_name:
+                        raise HTTPException(
+                            status_code=404,
+                            detail="NO_SUCH_PRICE_LIST"
+                        )
+
+                    db_r = await db.execute(select(PostDB.directory_name).where(PostDB.price_list_name == price_list_name))
+                    image_ids = db_r.scalars().all()
+                    await db.execute(delete(PostDB).where(PostDB.price_list_name == price_list_name))
+                    for i in image_ids:
+                            res = await client.delete(f"http://media-service:5001/api/v1/media/delete-image/{i}",
+                                                      headers={"X-Key": MEDIA_KEY, "X-Directory": i})
+
+                            if res.status_code != 200:
+                                print(res.text, res.status_code, )
+                                raise Exception
+
+                    await db.commit()
+
 
                 posts = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
                 post = posts.scalar_one_or_none()
@@ -230,6 +253,7 @@ async def manipulate(
                 await db.delete(post)
 
                 await db.commit()
+                return None
 
             case "a":
 
@@ -317,6 +341,7 @@ async def manipulate(
                         ], primary_key="id")
 
                         await db.commit()
+                return None
 
             case "u":
                 cls = PostDB
@@ -346,6 +371,7 @@ async def manipulate(
                         )
                     setattr(post, key, value)
                 await db.commit()
+                return None
             case "g":
 
                 metadata = data["metadata"]
@@ -454,7 +480,6 @@ async def get_post(
 
 @app.post("/api/v1/posts/add-post")
 async def add_post(
-        request: Request,
         db: AsyncSession = Depends(get_db),
         changed_data: dict = Body,
 ):

@@ -33,7 +33,7 @@ class RabbitMQGateway:
             await self.connection.close()
 
 
-from httpx import Limits, AsyncClient, HTTPError
+from httpx import Limits, AsyncClient
 
 from db_init import get_async_session, engine
 from model import AuthDB, TokenDB
@@ -116,7 +116,7 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.exception_handler(Exception)
-async def universal_server_error_handler(request: Request, exc: Exception):
+async def universal_server_error_handler(exc: Exception):
 
     if isinstance(exc, HTTPException):
         return JSONResponse(
@@ -513,6 +513,7 @@ async def manipulate(
                     print(req.text, req.status_code)
 
                     raise Exception
+                return None
 
             case "d":
 

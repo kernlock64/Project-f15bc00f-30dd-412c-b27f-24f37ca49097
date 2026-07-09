@@ -47,7 +47,7 @@ async def lifespan(cl: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 @app.exception_handler(Exception)
-async def universal_server_error_handler(request: Request, exc: Exception):
+async def universal_server_error_handler(exc: Exception):
 
     print(exc)
 

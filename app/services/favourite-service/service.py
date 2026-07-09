@@ -6,7 +6,7 @@ import uuid
 import json
 import os
 
-from httpx import Limits, AsyncClient, HTTPError
+from httpx import Limits, AsyncClient
 
 from db_init import get_async_session, engine
 from model import FavouriteDB
@@ -79,7 +79,7 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 app = FastAPI(lifespan=lifespan)
 
 @app.exception_handler(Exception)
-async def universal_server_error_handler(request: Request, exc: Exception):
+async def universal_server_error_handler(exc: Exception):
 
     print(exc)
 
@@ -101,7 +101,7 @@ async def delete_user(
 ):
     cls = FavouriteDB
     async with eng() as db:
-        await db.execute(delete(cls).where(cls.id == uid))
+        await db.execute(delete(cls).where(cls.uid == uid))
         await db.commit()
 
 async def listen_deletion():

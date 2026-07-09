@@ -105,8 +105,9 @@ async def send_request(
 
 
 @app.post("/api/v1/management/web-health/push")
-async def push(
+async def add_price_list(
         file: UploadFile = File(...),
+        db: AsyncSession = Depends(get_db),
 ):
     from file_proceed import initial_proceed
     if not file.filename.endswith('.zip'):
@@ -132,15 +133,21 @@ async def push(
 
     try:
         if data["metadata"]["status"] != "True":
+            os.remove(f"temp/{name}.zip")
             raise HTTPException(
                 status_code=400,
                 detail="Incorrect file upload! Check the documentation",
             )
+        price_list_name = data["metadata"]["price-list-name"]
+
     except Exception:
+        os.remove(f"temp/{name}.zip")
         raise HTTPException(
             status_code=400,
             detail="Incorrect file upload! Check the documentation",
         )
+
+    db.add(PriceListsDB(id=name, name=price_list_name))
 
     res, res_status = await send_request("ap", data)
 
@@ -148,7 +155,8 @@ async def push(
             print(res)
             raise Exception
 
-
+    await db.commit()
+    os.remove(f"temp/{name}.zip")
 
 @app.get("/api/v1/management/web-health/get-p")
 async def get_post(
@@ -197,7 +205,7 @@ async def get_users():
     pass
 
 
-@app.get("/api/v1/management/web-health/m/{destination}")
+@app.post("/api/v1/management/web-health/m/{destination}")
 async def manipulate(
         destination: str,
         data: dict,
@@ -340,6 +348,32 @@ async def user_verify(
     }
 
     res, res_status = await send_request("va", payload)
+
+    if res_status != 200:
+        print(res, res_status)
+        raise Exception
+
+@app.post("/api/v1/management/web-health/delete")
+async def delete_price_list(
+        price_list_name: str = Form(...),
+        db: AsyncSession = Depends(get_db),
+
+):
+    if not price_list_name:
+        raise Exception(
+            "No price-list provided!"
+        )
+
+    if not await db.execute(exists(PriceListsDB).where(PriceListsDB.name == price_list_name)):
+        raise Exception(
+            "No such ticket!"
+        )
+
+    payload = {
+        "price-list-name": str(price_list_name),
+    }
+
+    res, res_status = await send_request("dp", payload)
 
     if res_status != 200:
         print(res, res_status)
