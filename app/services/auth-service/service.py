@@ -245,12 +245,17 @@ async def proxy(request: Request, call_next):
         payload = jwt.decode(token, public_key, algorithms="ES256")
 
     except jwt.InvalidSignatureError:
-        raise Exception("Invalid signature!")
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "detail": "Invalid signature!",}
+        )
 
     except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=401,
-            detail="Token has expired!",
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "detail": "Token has expired!",}
         )
 
     eng = app.state.db
@@ -261,12 +266,17 @@ async def proxy(request: Request, call_next):
             v = version.scalar_one_or_none()
 
             if not v:
-                raise Exception("No such user!")
+                return JSONResponse(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    content={
+                        "detail": "No such user!"}
+                )
 
         if v != payload["tov"]:
-            raise HTTPException(
-                status_code=401,
-                detail="Unauthorized!",
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={
+                    "detail": "Unauthorized!"}
             )
 
         headers = MutableHeaders(scope=request.scope)
@@ -288,15 +298,17 @@ async def proxy(request: Request, call_next):
             u = users.scalar_one_or_none()
 
         if u.hashed_password != payload["p"]:
-            raise HTTPException(
-                status_code=403,
-                detail="Password has been already changed!",
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={
+                    "detail": "Password  has been already changed!"}
             )
 
         if request.url.path != "/change-password":
-            raise HTTPException(
-                status_code=401,
-                detail="Unauthorized!",
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={
+                    "detail": "Unauthorized!"}
             )
 
         headers = MutableHeaders(scope=request.scope)
@@ -486,6 +498,7 @@ async def manipulate(
                 cls = AuthDB
 
                 user_id = metadata["user_id"]
+                verdict = int(metadata["verdict"])
 
                 users = await db.execute(select(cls).where(cls.uid == str(user_id)))
                 user = users.scalar_one_or_none()
@@ -496,24 +509,52 @@ async def manipulate(
                         detail="USER_NOT_FOUND",
                     )
 
-                user.status = "ACTIVE"
+                if verdict == 1:
+
+                    user.status = "ACTIVE"
 
 
-                templ_data = {
-                    "email_to": user.email,
-                    "username": user.username,
-                }
+                    templ_data = {
+                        "email_to": user.email,
+                        "username": user.username,
+                    }
 
-                await db.commit()
+                    await db.commit()
 
-                req = await client.post("http://mail-service:5002/api/v1/mail/on-acceptance-provider", json=templ_data,
-                                        headers={"Content-Type": "application/json"})
+                    req = await client.post("http://mail-service:5002/api/v1/mail/on-acceptance-provider", json=templ_data,
+                                            headers={"Content-Type": "application/json"})
 
-                if req.status_code != 200:
-                    print(req.text, req.status_code)
+                    if req.status_code != 200:
+                        print(req.text, req.status_code)
 
-                    raise Exception
-                return None
+                        raise Exception
+                    return None
+
+                elif verdict == 0:
+                    user.status = "REJECTED"
+
+                    templ_data = {
+                        "email_to": user.email,
+                        "username": user.username,
+                    }
+
+                    await db.commit()
+
+                    req = await client.post("http://mail-service:5002/api/v1/mail/on-deny-provider",
+                                            json=templ_data,
+                                            headers={"Content-Type": "application/json"})
+
+                    if req.status_code != 200:
+                        print(req.text, req.status_code)
+
+                        raise Exception
+                    return None
+
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="INCORRECT_VERDICT",
+                    )
 
             case "d":
 

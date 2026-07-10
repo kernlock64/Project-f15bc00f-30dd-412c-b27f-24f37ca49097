@@ -323,9 +323,10 @@ async def requests_close(
     await db.delete(ticket)
     await db.commit()
 
-@app.post("/api/v1/management/web-health/user-verify")
-async def user_verify(
-        request_id: str = Form(...),
+@app.post("/api/v1/management/web-health/user-manipulate")
+async def user_manipulate(
+        request_id: str = Form(...),\
+        verdict: int = Form(...),
         db: AsyncSession = Depends(get_db),
 
 ):
@@ -343,8 +344,14 @@ async def user_verify(
             "No such ticket!"
         )
 
+    if int(verdict) not in [0, 1]:
+        raise Exception(
+            "Invalid verdict!"
+        )
+
     payload = {
         "user_id": ticket.author_id,
+        "verdict": verdict,
     }
 
     res, res_status = await send_request("va", payload)

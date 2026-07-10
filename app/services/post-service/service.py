@@ -448,13 +448,13 @@ async def search_posts(
     }
 
 
-@app.get("/api/v1/posts/{post_id}")
+@app.get("/api/v1/posts/post/{post_id}")
 async def get_post(
-        post_id: int,
+        post_id: str,
         db: AsyncSession = Depends(get_db),
 ):
 
-        res = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
+        res = await db.execute(select(PostDB).where(PostDB.id == str(post_id)))
         post = res.scalar_one_or_none()
 
         if not post:
@@ -610,6 +610,12 @@ async def report_post(
 async def get_posts(
         path: str,
 ):
+    if path.isdigit():
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid data!",
+        )
+
     category_id = PATH_TO_ID.get(path)
 
     if not category_id:

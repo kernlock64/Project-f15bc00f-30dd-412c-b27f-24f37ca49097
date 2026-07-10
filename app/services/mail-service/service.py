@@ -187,7 +187,7 @@ async def requesting_provider(
 
 
 @app.post("/api/v1/mail/on-acceptance-provider")
-async def registration_provider(
+async def registration_accept_provider(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
         db: AsyncSession = Depends(get_db),
@@ -206,7 +206,29 @@ async def registration_provider(
     db.add(mail)
     await db.commit()
 
-    background_tasks.add_task(send_email_async, "Регистрация", email_to, data, "on-acceptance-provider.html")
+    background_tasks.add_task(send_email_async, "Заявка одобрена", email_to, data, "on-acceptance-provider.html")
+
+@app.post("/api/v1/mail/on-deny-provider")
+async def registration_deny_provider(
+        background_tasks: BackgroundTasks,
+        data: dict = Body(...),
+        db: AsyncSession = Depends(get_db),
+):
+
+    email_to = data["email_to"]
+
+    if not email_to:
+        raise HTTPException(
+            status_code=404,
+            detail="No receiver!",
+        )
+
+    mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc),
+                  theme="deny-provider")
+    db.add(mail)
+    await db.commit()
+
+    background_tasks.add_task(send_email_async, "Заявка отклонена", email_to, data, "on-acceptance-provider.html")
 
 
 @app.post("/api/v1/mail/on-confirmation-mail")
