@@ -133,6 +133,7 @@ async def add_price_list(
 
     try:
         if data["metadata"]["status"] != "True":
+            print(data)
             os.remove(f"temp/{name}.zip")
             raise HTTPException(
                 status_code=400,
@@ -140,7 +141,8 @@ async def add_price_list(
             )
         price_list_name = data["metadata"]["price-list-name"]
 
-    except Exception:
+    except Exception as e:
+        print(data, e)
         os.remove(f"temp/{name}.zip")
         raise HTTPException(
             status_code=400,
@@ -325,7 +327,7 @@ async def requests_close(
 
 @app.post("/api/v1/management/web-health/user-manipulate")
 async def user_manipulate(
-        request_id: str = Form(...),\
+        request_id: str = Form(...),
         verdict: int = Form(...),
         db: AsyncSession = Depends(get_db),
 
@@ -371,7 +373,8 @@ async def delete_price_list(
             "No price-list provided!"
         )
 
-    if not await db.execute(exists(PriceListsDB).where(PriceListsDB.name == price_list_name)):
+    res = await db.execute(select(exists(PriceListsDB).where(PriceListsDB.name == price_list_name)))
+    if not res.scalar():
         raise Exception(
             "No such ticket!"
         )

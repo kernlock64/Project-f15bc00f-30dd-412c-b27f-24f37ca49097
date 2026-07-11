@@ -255,7 +255,8 @@ async def proxy(request: Request, call_next):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={
-                "detail": "Token has expired!",}
+                "detail": "Token has expired!",
+            }
         )
 
     eng = app.state.db
@@ -947,12 +948,18 @@ async def refresh(
         tokens = await session.execute(select(TokenDB).where(TokenDB.token == refreshment_t))
         token = tokens.scalars().one_or_none()
 
+        if not token:
+            raise HTTPException(
+                status_code=401,
+                detail="Unauthorized!",
+            )
+
         uid = token.uid
 
         users = await session.execute(select(AuthDB).where(AuthDB.uid == uid))
         user = users.scalars().one_or_none()
 
-        if not token or not uid:
+        if not uid:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid data!",

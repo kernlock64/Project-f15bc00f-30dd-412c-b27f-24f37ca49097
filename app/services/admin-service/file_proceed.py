@@ -56,10 +56,10 @@ async def initial_proceed(filename):
                         "message": "Error parsing!"
                     }
 
-    except Exception:
+    except Exception as e:
         return {
             "status": "False",
-            "message": "Something went wrong!"
+            "message": e
         }
 
 
@@ -160,8 +160,8 @@ async def without_images_proceed(filename, posts, response):
         response["metadata"]["status"] = "True"
         return response
 
-    except Exception:
+    except Exception as e:
         return {
             "status": "False",
-            "message": "Something went wrong!"
+            "message": e
         }
