@@ -227,13 +227,14 @@ async def manipulate(
                                                       headers={"X-Key": MEDIA_KEY, "X-Directory": i})
 
                             if res.status_code != 200:
-                                print(res.text, res.status_code, )
+                                print(res.text, res.status_code,)
                                 raise Exception
 
                     await db.commit()
+                    return None
 
 
-                posts = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
+                posts = await db.execute(select(PostDB).where(PostDB.id == str(post_id)))
                 post = posts.scalar_one_or_none()
 
                 if not post:
@@ -627,15 +628,10 @@ async def get_posts(
     category = CATEGORIES_CACHE.get(category_id)
 
     if category["is_leaf"]:
-        return {
-            "category_id": category_id,
-            "title": category["name"],
-            "metadata": {
-                "api_url": "/api/v1/posts/search",
-                "base_filter": f"category_id = {category_id}",
-                "index": "posts",
-            }
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Cannot fetch subcategories for a leaf category. Use the search endpoint directly",
+        )
 
     else:
         cat = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == category_id]

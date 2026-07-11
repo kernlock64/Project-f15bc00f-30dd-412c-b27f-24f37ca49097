@@ -320,7 +320,8 @@ async def user_check(
 
     if role == "1":
 
-        if await db.execute(exists(CustomersDB).where(CustomersDB.id == uid)):
+        res = await db.execute(select(exists(CustomersDB).where(CustomersDB.id == uid)))
+        if not res.scalar():
             return {
                 "status": "True",
             }
