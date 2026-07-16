@@ -216,14 +216,14 @@ async def get_users():
 @app.post("/api/v1/management/web-health/m/{destination}")
 async def manipulate(
         destination: str,
-        data: dict,
+        data: str = Form(...),
 ):
     try:
         match destination:
 
             case "dp":
                 payload = {
-                    "pid": data["pid"],
+                    "post_id": data,
                 }
 
                 res, res_status = await send_request("dp", payload)
@@ -234,7 +234,7 @@ async def manipulate(
 
             case "da":
                 payload = {
-                    "uid": data["uid"],
+                    "user_id": data,
                 }
 
                 res, res_status = await send_request("da", payload)
@@ -245,7 +245,7 @@ async def manipulate(
 
             case "up":
                 payload = {
-                    "changed_data": data["changed_data"],
+                    "changed_data": data,
                 }
 
                 res, res_status = await send_request("up", payload)
@@ -256,7 +256,7 @@ async def manipulate(
 
             case "uu":
                 payload = {
-                    "changed_data": data["changed_data"],
+                    "changed_data": data,
                 }
 
                 res, res_status = await send_request("uu", payload)

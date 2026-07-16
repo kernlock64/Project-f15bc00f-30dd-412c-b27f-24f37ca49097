@@ -389,13 +389,6 @@ async def get_user(
         }
     if role == "2":
 
-        res2 = await client.get(f"http://post-service:5003/api/v1/posts/search?fil=author_id={uid}",
-                                headers=request.headers)
-
-        if res2.status_code != 200:
-            print(res2.text, res2.status_code)
-            raise Exception
-
         users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
         user = users.scalar_one_or_none()
 
@@ -416,7 +409,6 @@ async def get_user(
             "description": str(user.description),
             "delivery_description": str(user.delivery_description),
             "favourites": str(res1.json()["favourites"]),
-            "posts": str(res2.json()["posts"]),
         }
 
     raise Exception

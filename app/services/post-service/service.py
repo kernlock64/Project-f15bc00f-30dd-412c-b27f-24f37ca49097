@@ -56,6 +56,8 @@ async def lifespan(cl: FastAPI):
 
     index = meili_engine.index("posts")
 
+    await index.update(primary_key="id")
+
     task = await index.update_settings(MeilisearchSettings(
         filterable_attributes=[
             "price",
@@ -319,6 +321,8 @@ async def manipulate(
 
                         await db.commit()
 
+                        return None
+
                 elif metadata["is_images"] == "f":
                     for post in posts:
                         post_id = str((lambda: ''.join(
@@ -350,7 +354,7 @@ async def manipulate(
                         ], primary_key="id")
 
                         await db.commit()
-                return None
+                        return None
 
             case "u":
                 cls = PostDB
