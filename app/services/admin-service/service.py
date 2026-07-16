@@ -49,7 +49,14 @@ async def get_db():
         yield session
 
 @app.exception_handler(Exception)
-async def universal_server_error_handler(request: Request, exc: Exception):
+async def universal_server_error_handler(req: Request, exc: Exception):
+
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            content={
+                "detail": exc.detail,}
+        )
+
     print(exc)
 
     return JSONResponse(
@@ -57,7 +64,6 @@ async def universal_server_error_handler(request: Request, exc: Exception):
         content={
             "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
     )
-
 
 async def send_request(
         dest: str,

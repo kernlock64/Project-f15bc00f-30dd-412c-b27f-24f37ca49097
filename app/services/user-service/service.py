@@ -92,7 +92,14 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.exception_handler(Exception)
-async def universal_server_error_handler(exc: Exception):
+async def universal_server_error_handler(req: Request, exc: Exception):
+
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            content={
+                "detail": exc.detail,}
+        )
+
     print(exc)
 
     return JSONResponse(

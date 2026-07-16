@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, Request, Form, status
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import HTTPException
 import httpx
 from sqlalchemy import *
 import uuid
@@ -79,7 +80,13 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 app = FastAPI(lifespan=lifespan)
 
 @app.exception_handler(Exception)
-async def universal_server_error_handler(exc: Exception):
+async def universal_server_error_handler(req: Request, exc: Exception):
+
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            content={
+                "detail": exc.detail,}
+        )
 
     print(exc)
 
@@ -169,25 +176,29 @@ async def get_favourites(
             ]
         }
 
-@app.get("/api/v1/favourites/is-favourite")
+@app.get("/api/v1/favourites/is-favourite/{post_id}")
 async def is_favourite(
         request: Request,
+        post_id: str,
         db: AsyncSession = Depends(get_db),
-        post_id: int = Form(...),
 ):
         uid = request.headers["X-User-Id"]
         res = await db.execute(select(FavouriteDB.uid).where(FavouriteDB.pid == str(post_id)))
         favourite_uid = res.scalar_one_or_none()
         if favourite_uid != uid:
-            raise Exception("No such post!")
+            return {
+                "is_favourite": False
+            }
 
-        return None
+        return {
+            "is_favourite": True
+        }
 
 
 @app.post("/api/v1/favourites/{post_id}")
 async def favourite_manager(
         request: Request,
-        post_id: int,
+        post_id: str,
         db: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
 ):
@@ -200,9 +211,8 @@ async def favourite_manager(
         else:
             return await delete_favourite(post_id, uid, db)
 
-
 async def add_favourite(
-        post_id: int,
+        post_id: str,
         user_id: str,
         db: AsyncSession,
         client: AsyncClient,
@@ -210,7 +220,7 @@ async def add_favourite(
 
         c = cache.get(post_id)
         if not c:
-            resp = await client.get("http://post-service:5003/api/v1/posts/get-post")
+            resp = await client.get(f"http://post-service:5003/api/v1/posts/post/{post_id}")
 
             if resp.status_code != 200:
                 print(resp.text, resp.status_code)
@@ -221,14 +231,14 @@ async def add_favourite(
             r = resp.json()
 
             db.add(
-                FavouriteDB(id=str(uuid.uuid4()), pid=post_id, uid=user_id, p_title=str(r["p_title"]),
-                            p_image=str(r["p_image"])))
+                FavouriteDB(id=str(uuid.uuid4()), pid=post_id, uid=user_id, p_title=str(r["title"]),
+                            p_image=str(r["title_image"])))
             await db.commit()
 
         else:
             db.add(
-                FavouriteDB(id=str(uuid.uuid4()), pid=post_id, uid=user_id, p_title=str(c["p_title"]),
-                            p_image=str(c["p_image"])))
+                FavouriteDB(id=str(uuid.uuid4()), pid=post_id, uid=user_id, p_title=str(c["title"]),
+                            p_image=str(c["title_image"])))
 
             await db.commit()
 

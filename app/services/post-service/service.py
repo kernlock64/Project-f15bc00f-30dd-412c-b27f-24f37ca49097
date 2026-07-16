@@ -124,7 +124,14 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.exception_handler(Exception)
-async def universal_server_error_handler(exc: Exception):
+async def universal_server_error_handler(req: Request, exc: Exception):
+
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            content={
+                "detail": exc.detail,}
+        )
+
     print(exc)
 
     return JSONResponse(
@@ -292,6 +299,7 @@ async def manipulate(
                                    coordinates=WKTElement(
                                        f"POINT({post["coordinates"][0]} {post["coordinates"][1]})", srid=4326),
                                    price=int(post["price"]),
+                                   title_image=str(str(post["images_dir"]) + "/" + str(post['title_image']))
                                    )
                         db.add(p)
 
@@ -397,6 +405,7 @@ async def manipulate(
                     "category_id": post.category_id,
                     "price_list_id": post.price_list_id,
                     "coordinates": post.coordinates,
+                    "title_image": post.title_image,
 
                 }
 
@@ -451,8 +460,10 @@ async def search_posts(
 
 @app.get("/api/v1/posts/post/{post_id}")
 async def get_post(
+        request: Request,
         post_id: str,
         db: AsyncSession = Depends(get_db),
+        client: AsyncClient = Depends(get_httpx),
 ):
 
         res = await db.execute(select(PostDB).where(PostDB.id == str(post_id)))
@@ -464,18 +475,33 @@ async def get_post(
                 detail="No such post!"
             )
 
+        res1 = await client.get(f"http://favourite-service:5005/api/v1/favourites/is-favourite/{post_id}",
+                            headers=request.headers)
+
+        if res1.status_code != 200:
+            print(res1.text, res1.status_code)
+            raise Exception
+
+        res2 = await client.get(f"http://user-service:5004/api/v1/users/producers/{post.author_id}")
+
+        if res2.status_code != 200:
+            print(res2.text, res2.status_code)
+            raise Exception
+
         return {
-            "status": "True",
+            "post_id": post.id,
             "title": post.title,
             "author_id": post.author_id,
+            "author": res2.json(),
             "description": post.description,
             "images": post.images,
             "directory_name": post.directory_name,
             "posted_at": post.posted_at,
             "category_id": post.category_id,
-            "price_list_id": post.price_list_id,
-            "coordinates": post.coordinates,
-
+            "price_list_name": post.price_list_name,
+            "coordinates": post.coordinate,
+            "title_image": post.title_image,
+            "is_favourite": "True" if res1.json()["is_favourite"] else "False",
         }
 
 

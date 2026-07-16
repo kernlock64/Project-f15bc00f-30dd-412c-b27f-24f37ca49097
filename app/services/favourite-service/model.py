@@ -7,6 +7,6 @@ class FavouriteDB(Base):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
     uid: Mapped[str] = mapped_column(Text, nullable=False)
-    pid: Mapped[int] = mapped_column(Integer, nullable=False)
+    pid: Mapped[str] = mapped_column(Text, nullable=False)
     p_image: Mapped[str] = mapped_column(Text, nullable=False)
     p_title: Mapped[str] = mapped_column(Text, nullable=False)
