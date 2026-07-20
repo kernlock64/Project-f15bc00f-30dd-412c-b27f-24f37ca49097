@@ -5,6 +5,7 @@ from starlette.responses import StreamingResponse
 from httpx import Limits, AsyncClient
 from contextlib import asynccontextmanager
 import os
+from starlette.exceptions import HTTPException as StarletteException
 
 MEDIA_KEY = os.getenv("MEDIA_KEY")
 
@@ -28,14 +29,16 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 
 app = FastAPI(lifespan=lifespan)
 
-@app.exception_handler(Exception)
-async def universal_server_error_handler(req: Request, exc: Exception):
-
-    if isinstance(exc, HTTPException):
-        return JSONResponse(
+@app.exception_handler(StarletteException)
+async def universal_server_http_error_handler(req: Request, exc: StarletteException):
+    return JSONResponse(
+            status_code=exc.status_code,
             content={
                 "detail": exc.detail,}
         )
+
+@app.exception_handler(Exception)
+async def universal_server_error_handler(req: Request, exc: Exception):
 
     print(exc)
 

@@ -15,7 +15,8 @@ import os
 import aio_pika
 import asyncio
 from bcrypt import *
-
+import zxcvbn_rs_py as checker
+from starlette.exceptions import HTTPException as StarletteException
 
 class RabbitMQGateway:
 
@@ -115,14 +116,16 @@ async def lifespan(cl: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-@app.exception_handler(Exception)
-async def universal_server_error_handler(req: Request, exc: Exception):
-
-    if isinstance(exc, HTTPException):
-        return JSONResponse(
+@app.exception_handler(StarletteException)
+async def universal_server_http_error_handler(req: Request, exc: StarletteException):
+    return JSONResponse(
+            status_code=exc.status_code,
             content={
                 "detail": exc.detail,}
         )
+
+@app.exception_handler(Exception)
+async def universal_server_error_handler(req: Request, exc: Exception):
 
     print(exc)
 
@@ -169,7 +172,10 @@ async def user_check(uid, eng):
         user = users.scalar_one_or_none()
 
         if not user:
-            raise Exception("No such user!")
+            raise HTTPException(
+                status_code=404,
+                detail="NO_SUCH_USER",
+            )
 
         if user.status != "ACTIVE":
             await db.delete(user)
@@ -304,8 +310,8 @@ async def proxy(request: Request, call_next):
                 content={
                     "detail": "Password  has been already changed!"}
             )
-
-        if request.url.path != "/change-password":
+        print(request.url.path)
+        if request.url.path != "/api/v1/change-password":
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={
@@ -396,12 +402,18 @@ async def user_confirm(
                                  headers={"Content-Type": "application/json"})
         if resp.status_code != 200:
             print(resp.text, resp.status_code)
-            raise Exception
+            raise HTTPException(
+                status_code=resp.status_code,
+                detail=resp.json().get("detail"),
+            )
 
         req = await client.post("http://admin-service:5006/api/v1/management/web-health/request", json=payload)
         if req.status_code != 200:
             print(req.text, req.status_code)
-            raise Exception
+            raise HTTPException(
+                status_code=req.status_code,
+                detail=req.json().get("detail"),
+            )
 
     req1 = await client.post("http://user-service:5004/api/v1/users/add-user", data={
         "username": user.username,
@@ -413,8 +425,10 @@ async def user_confirm(
 
     if req1.status_code != 200:
         print(req1.text, req1.status_code)
-
-        raise Exception
+        raise HTTPException(
+            status_code=req1.status_code,
+            detail=req1.json().get("detail"),
+        )
 
     if user.role == "1":
 
@@ -427,44 +441,45 @@ async def user_confirm(
         if req2.status_code != 200:
             print(req2.text, req2.status_code)
 
-            raise Exception
+            raise HTTPException(
+                status_code=req2.status_code,
+                detail=req2.json().get("detail"),
+            )
 
 async def check_data(password, email, username, session: AsyncSession):
-    check_flag = False
+    check_flag = True
 
-    if len(password) < 8:
-        return {"status": "False", "message": "Пароль должен быть как минимум 8 символов!"}
+    if len(password) > 64:
+        return {"status": "False", "message": "MAX_LEN_64"}
 
-    for letter in password:
-        if letter.isdigit():
-            check_flag = True
-            break
-        if letter.isupper():
-            check_flag = True
-            break
+    res = checker.zxcvbn(password)
+
+    if int(res.score) < 3:
+        check_flag = False
+
     if not check_flag:
-        return {"status": "False", "message": "Пароль должен содержать в себе минимум 1 заглавную букву, и одну цифру!"}
+        return {"status": "False", "message": "WEAK_PASSWORD"}
 
     result = await session.execute(select(exists().where(AuthDB.email == email)))
     if result.scalar():
-        return {"status": "False", "message": "Пользователь уже существует!"}
+        return {"status": "False", "message": "USER_EXIST"}
 
     if 3 > len(username):
-        return {"status": "False", "message": "Недопустимое имя пользователя! Минимальная длина имени 3 символа!"}
+        return {"status": "False", "message": "INVALID_USERNAME"}
 
     if len(username) > 15:
-        return {"status": "False", "message": "Недопустимое имя пользователя! Максимальная длина имени 15 символов!"}
+        return {"status": "False", "message": "INVALID_USERNAME"}
 
     if ' ' in username or any([i in '!@#$%^&*()_+=-' for i in username]):
         return {"status": "False",
-                "message": "Недопустимое имя пользователя! Имя пользователя не может содержать пробелы!"}
+                "message": "INVALID_USERNAME"}
 
     try:
         validate_email(email, check_deliverability=True)
 
 
     except EmailNotValidError:
-        return {"status": "False", "message": 'E-mail недействителен!'}
+        return {"status": "False", "message": 'INVALID_EMAIL'}
 
     return {"status": "True", }
 
@@ -528,7 +543,11 @@ async def manipulate(
                     if req.status_code != 200:
                         print(req.text, req.status_code)
 
-                        raise Exception
+                        raise HTTPException(
+                            status_code=req.status_code,
+                            detail=req.json().get("detail"),
+                        )
+
                     return None
 
                 elif verdict == 0:
@@ -548,7 +567,10 @@ async def manipulate(
                     if req.status_code != 200:
                         print(req.text, req.status_code)
 
-                        raise Exception
+                        raise HTTPException(
+                            status_code=req.status_code,
+                            detail=req.json().get("detail"),
+                        )
                     return None
 
                 else:
@@ -585,7 +607,10 @@ async def manipulate(
                 if resp.status_code != 200:
                     await db.rollback()
                     print(resp.text, resp.status_code)
-                    raise Exception
+                    raise HTTPException(
+                        status_code=resp.status_code,
+                        detail=resp.json().get("detail"),
+                    )
 
                 response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
                 response.delete_cookie(key="refreshment_t")
@@ -612,7 +637,10 @@ async def forgot_password(
     user = res.scalar_one_or_none()
 
     if not user:
-        raise Exception("No such user!")
+        raise HTTPException(
+            status_code=404,
+            detail="Incorrect scope!",
+        )
 
     else:
         payload = {
@@ -635,8 +663,10 @@ async def forgot_password(
 
         if req.status_code != 200:
             print(req.text, req.status_code)
-
-            raise Exception
+            raise HTTPException(
+                status_code=req.status_code,
+                detail=req.json().get("detail"),
+            )
 
     return None
 
@@ -649,7 +679,10 @@ async def logout(
     uid = request.headers.get('X-User-Id')
 
     if not uid:
-        raise Exception("No uid provided!")
+        raise HTTPException(
+            status_code=400,
+            detail="NO_UID",
+        )
 
     await db.execute(
         update(AuthDB)
@@ -680,6 +713,7 @@ async def registration(
         email: str = Form(...),
         telephone: str = Form(None),
 ):
+
     if not telephone and role == 2:
         raise HTTPException(
             status_code=400,
@@ -752,7 +786,10 @@ async def registration(
 
     if req.status_code != 200:
         print(req.text, req.status_code)
-        raise Exception
+        raise HTTPException(
+            status_code=req.status_code,
+            detail=req.json().get("detail"),
+        )
 
     await session.commit()
 
@@ -774,7 +811,10 @@ async def delete(
     role = request.headers.get("X-Role")
 
     if not uid:
-        raise Exception("No uid provided!")
+        raise HTTPException(
+            status_code=400,
+            detail="NO_UID_PROVIDED"
+        )
 
     background_tasks.add_task(deletion_task, uid, role)
 
@@ -797,7 +837,10 @@ async def delete(
     if resp.status_code != 200:
         await db.rollback()
         print(resp.text, resp.status_code)
-        raise Exception
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=resp.json().get("detail"),
+        )
 
     response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
     response.delete_cookie(key="refreshment_t")
@@ -891,9 +934,20 @@ async def change_password(
         user = users.scalars().one_or_none()
 
         if not user:
-            raise Exception("No such user!")
+            raise HTTPException(
+                status_code=404,
+                detail="NO_SUCH_USER"
+            )
 
-        user.hashed_password = password_hash(new_password)
+        if len(new_password) > 64:
+            return {"status": "False", "message": "MAX_LEN_64"}
+
+        res = checker.zxcvbn(new_password)
+
+        if int(res.score) < 3:
+            return {"status": "False", "message": "WEAK_PASSWORD"}
+
+        user.hashed_password = await password_hash(new_password)
 
         templ_data = {
             "email_to": user.email,
@@ -906,9 +960,14 @@ async def change_password(
         if resp.status_code != 200:
             await session.rollback()
             print(resp.text, resp.status_code)
-            raise Exception
+            raise HTTPException(
+                status_code=resp.status_code,
+                detail=resp.json().get("detail"),
+            )
 
         await session.commit()
+
+        return None
 
 
 @app.post("/api/v1/change-email")
@@ -925,7 +984,10 @@ async def change_email(
         user = users.scalars().one_or_none()
 
         if not user:
-            raise Exception("No such user!")
+            raise HTTPException(
+                status_code=404,
+                detail="NO_SUCH_USER"
+            )
 
         user.email = new_email
 
@@ -990,7 +1052,10 @@ async def refresh(
             if resp.status_code != 200:
                 await session.rollback()
                 print(resp.text, resp.status_code)
-                raise Exception
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=resp.json().get("detail"),
+                )
 
             raise HTTPException(
                 status_code=403,

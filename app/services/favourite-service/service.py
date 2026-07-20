@@ -8,7 +8,7 @@ import json
 import os
 
 from httpx import Limits, AsyncClient
-
+from starlette.exceptions import HTTPException as StarletteException
 from db_init import get_async_session, engine
 from model import FavouriteDB
 from contextlib import asynccontextmanager
@@ -79,14 +79,16 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 
 app = FastAPI(lifespan=lifespan)
 
-@app.exception_handler(Exception)
-async def universal_server_error_handler(req: Request, exc: Exception):
-
-    if isinstance(exc, HTTPException):
-        return JSONResponse(
+@app.exception_handler(StarletteException)
+async def universal_server_http_error_handler(req: Request, exc: StarletteException):
+    return JSONResponse(
+            status_code=exc.status_code,
             content={
                 "detail": exc.detail,}
         )
+
+@app.exception_handler(Exception)
+async def universal_server_error_handler(req: Request, exc: Exception):
 
     print(exc)
 
@@ -95,6 +97,7 @@ async def universal_server_error_handler(req: Request, exc: Exception):
         content={
             "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
     )
+
 
 async def get_db():
     factory = app.state.db
@@ -224,7 +227,10 @@ async def add_favourite(
 
             if resp.status_code != 200:
                 print(resp.text, resp.status_code)
-                raise Exception
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=resp.json().get("detail"),
+                )
 
             cache[post_id] = resp.json()
 

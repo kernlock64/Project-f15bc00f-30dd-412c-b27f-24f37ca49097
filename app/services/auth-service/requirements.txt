@@ -30,3 +30,4 @@ python-multipart==0.0.22
 aio_pika==9.6.1
 phonenumbers==9.0.26
 bcrypt==5.0.0
+zxcvbn-rs-py==0.3.0

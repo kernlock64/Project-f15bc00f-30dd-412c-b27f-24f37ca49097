@@ -1,18 +1,19 @@
+import os
+import uuid
+from contextlib import asynccontextmanager
+from datetime import *
+
+import httpx
+import jwt
 from fastapi import FastAPI, Depends, Request, UploadFile, File, status, HTTPException, Body, Form
 from fastapi.responses import JSONResponse
-import httpx
+from httpx import Limits
 from sqlalchemy import *
-import uuid
-import os
-from datetime import *
-import jwt
-from db_init import get_async_session, engine
-
-from httpx import Limits, AsyncClient, HTTPError
-
-from model import TicketsDB, PriceListsDB
-from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.exceptions import HTTPException as StarletteException
+
+from db_init import get_async_session, engine
+from model import TicketsDB, PriceListsDB
 
 limits = Limits(
     max_connections=1000,
@@ -20,9 +21,6 @@ limits = Limits(
 )
 
 MAX_AD_SIZE = 30 * 1024 * 1024
-
-class Error(Exception):
-    pass
 
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
@@ -48,14 +46,16 @@ async def get_db():
     async with factory() as session:
         yield session
 
-@app.exception_handler(Exception)
-async def universal_server_error_handler(req: Request, exc: Exception):
-
-    if isinstance(exc, HTTPException):
-        return JSONResponse(
+@app.exception_handler(StarletteException)
+async def universal_server_http_error_handler(req: Request, exc: StarletteException):
+    return JSONResponse(
+            status_code=exc.status_code,
             content={
                 "detail": exc.detail,}
         )
+
+@app.exception_handler(Exception)
+async def universal_server_error_handler(req: Request, exc: Exception):
 
     print(exc)
 
@@ -87,7 +87,10 @@ async def send_request(
         "uu",
         "gu",
     ]:
-        raise Exception("Invalid destination")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid destination!",
+        )
 
     payload = {
         "thm": "admin",
@@ -161,7 +164,10 @@ async def add_price_list(
 
     if res_status != 200:
             print(res)
-            raise Exception
+            raise HTTPException(
+                status_code=res_status,
+                detail=res.json().get("detail"),
+            )
 
     await db.commit()
     os.remove(f"temp/{name}.zip")
@@ -173,8 +179,12 @@ async def get_post(
     res, res_status = await send_request("gp", {"pid": pid})
 
     if res_status != 200:
-            print(res)
-            raise Exception
+        print(res)
+        raise HTTPException(
+            status_code=res_status,
+            detail=res.json().get("detail"),
+        )
+
     return res.json()
 
 
@@ -189,7 +199,10 @@ async def get_posts(
 
     if res_status != 200:
             print(res)
-            raise Exception
+            raise HTTPException(
+                status_code=res_status,
+                detail=res.json().get("detail"),
+            )
 
     return res.json()
 
@@ -203,7 +216,10 @@ async def get_user(
 
     if res_status != 200:
             print(res)
-            raise Exception
+            raise HTTPException(
+                status_code=res_status,
+                detail=res.json().get("detail"),
+            )
 
     return res.json()
 
@@ -230,7 +246,10 @@ async def manipulate(
 
                 if res_status != 200:
                     print(res)
-                    raise Exception
+                    raise HTTPException(
+                        status_code=res_status,
+                        detail=res.json().get("detail"),
+                    )
 
             case "da":
                 payload = {
@@ -241,7 +260,10 @@ async def manipulate(
 
                 if res_status != 200:
                     print(res)
-                    raise Exception
+                    raise HTTPException(
+                        status_code=res_status,
+                        detail=res.json().get("detail"),
+                    )
 
             case "up":
                 payload = {
@@ -252,7 +274,10 @@ async def manipulate(
 
                 if res_status != 200:
                     print(res)
-                    raise Exception
+                    raise HTTPException(
+                        status_code=res_status,
+                        detail=res.json().get("detail"),
+                    )
 
             case "uu":
                 payload = {
@@ -263,7 +288,10 @@ async def manipulate(
 
                 if res_status != 200:
                     print(res)
-                    raise Exception
+                    raise HTTPException(
+                        status_code=res_status,
+                        detail=res.json().get("detail"),
+                    )
 
     except KeyError:
 
@@ -340,21 +368,21 @@ async def user_manipulate(
 ):
 
     if not request_id:
-        raise Exception(
-            "No request_id provided!"
-        )
+        raise HTTPException(status_code=404, detail="NO_SUCH_REQUEST")
 
     tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == request_id))
     ticket = tickets.scalar_one_or_none()
 
     if not ticket:
-        raise Exception(
-            "No such ticket!"
+        raise HTTPException(
+            status_code=404,
+            detail="No such ticket!",
         )
 
     if int(verdict) not in [0, 1]:
-        raise Exception(
-            "Invalid verdict!"
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verdict!",
         )
 
     payload = {
@@ -365,8 +393,11 @@ async def user_manipulate(
     res, res_status = await send_request("va", payload)
 
     if res_status != 200:
-        print(res, res_status)
-        raise Exception
+            print(res)
+            raise HTTPException(
+                status_code=res_status,
+                detail=res.json().get("detail"),
+            )
 
 @app.post("/api/v1/management/web-health/delete")
 async def delete_price_list(
@@ -375,14 +406,16 @@ async def delete_price_list(
 
 ):
     if not price_list_name:
-        raise Exception(
-            "No price-list provided!"
+        raise HTTPException(
+            status_code=404,
+            detail="No such price list!",
         )
 
     res = await db.execute(select(exists(PriceListsDB).where(PriceListsDB.name == price_list_name)))
     if not res.scalar():
-        raise Exception(
-            "No such ticket!"
+        raise HTTPException(
+            status_code=404,
+            detail="No such ticket!",
         )
 
     payload = {
@@ -392,5 +425,8 @@ async def delete_price_list(
     res, res_status = await send_request("dp", payload)
 
     if res_status != 200:
-        print(res, res_status)
-        raise Exception
+            print(res)
+            raise HTTPException(
+                status_code=res_status,
+                detail=res.json().get("detail"),
+            )

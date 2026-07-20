@@ -4,6 +4,7 @@ import json
 import aiofiles
 import io
 
+from starlette.exceptions import HTTPException as StarletteException
 from fastapi import FastAPI, File, UploadFile, Depends, Request, Form, Body, status, HTTPException
 from fastapi.responses import JSONResponse
 import httpx
@@ -91,15 +92,17 @@ async def get_avatar():
 app = FastAPI(lifespan=lifespan)
 
 
+@app.exception_handler(StarletteException)
+async def universal_server_http_error_handler(req: Request, exc: StarletteException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.detail, }
+    )
+
+
 @app.exception_handler(Exception)
 async def universal_server_error_handler(req: Request, exc: Exception):
-
-    if isinstance(exc, HTTPException):
-        return JSONResponse(
-            content={
-                "detail": exc.detail,}
-        )
-
     print(exc)
 
     return JSONResponse(
@@ -247,11 +250,15 @@ async def manipulate(
 
                 if res1.status_code != 200:
                     print(res1.text, res1.status_code)
-                    raise Exception
+                    raise HTTPException(
+                        status_code=res1.status_code,
+                        detail=res1.json().get("details"),
+                    )
 
                 if role == "1":
 
-                    if not await db.execute(exists(CustomersDB).where(CustomersDB.id == uid)):
+                    if not (
+                    await db.execute((exists(CustomersDB).where(CustomersDB.id == CustomersDB).select()))).scalar():
                         raise HTTPException(
                             status_code=404,
                             detail="NO_SUCH_USER",
@@ -287,8 +294,10 @@ async def manipulate(
 
                     if res2.status_code != 200:
                         print(res2.text, res2.status_code)
-                        raise Exception
-
+                        raise HTTPException(
+                            status_code=res2.status_code,
+                            detail=res2.json().get("details"),
+                        )
 
                     if user:
                         return {
@@ -312,9 +321,9 @@ async def manipulate(
                 return None
             case _:
                 raise HTTPException(
-                status_code=404,
-                detail="Incorrect scope!",
-            )
+                    status_code=404,
+                    detail="Incorrect scope!",
+                )
 
 
 @app.get("/api/v1/users/user-check")
@@ -351,7 +360,11 @@ async def user_check(
             detail="NO_SUCH_USER",
         )
 
-    raise Exception
+    raise HTTPException(
+        status_code=400,
+        detail="INVALID_ROLE",
+    )
+
 
 @app.get("/api/v1/users/get-user")
 async def get_user(
@@ -366,7 +379,10 @@ async def get_user(
 
     if res1.status_code != 200:
         print(res1.text, res1.status_code)
-        raise Exception
+        raise HTTPException(
+            status_code=res1.status_code,
+            detail=res1.json().get("details"),
+        )
 
     if role == "1":
         users = await db.execute(select(CustomersDB).where(CustomersDB.id == uid))
@@ -411,7 +427,10 @@ async def get_user(
             "favourites": str(res1.json()["favourites"]),
         }
 
-    raise Exception
+    raise HTTPException(
+        status_code=400,
+        detail="MISS_SCOPE",
+    )
 
 
 @app.get("/api/v1/users/producers/{uid}")
@@ -422,11 +441,14 @@ async def get_user_prod(
         client: AsyncClient = Depends(get_httpx),
 ):
     res = await client.get(f"http://post-service:5003/api/v1/posts/search?fil=author_id={uid}",
-                            headers=request.headers)
+                           headers=request.headers)
 
     if res.status_code != 200:
         print(res.text, res.status_code)
-        raise Exception
+        raise HTTPException(
+            status_code=res.status_code,
+            detail=res.json().get("details"),
+        )
 
     users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
     user = users.scalar_one_or_none()
@@ -480,8 +502,10 @@ async def add_user(
 
     if resp.status_code != 200:
         print(resp.text, resp.status_code)
-        raise Exception
-
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=resp.json().get("details"),
+        )
     else:
         user = CustomersDB(id=uid, username=username, email=email, date_created=datetime.now(timezone.utc),
                            image=str(filename + '.' + "png")) if role == "1" else ProdDB(
@@ -549,7 +573,11 @@ async def change_avatar(
 
     if resp.status_code != 200:
         print(resp.text, resp.status_code)
-        raise Exception
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=resp.json().get("details"),
+        )
+
 
 @app.post("/api/v1/users/support-request")
 async def report(
@@ -577,6 +605,9 @@ async def report(
 
     if resp.status_code != 200:
         print(resp.text, resp.status_code)
-        raise Exception
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=resp.json().get("details"),
+        )
 
     return None

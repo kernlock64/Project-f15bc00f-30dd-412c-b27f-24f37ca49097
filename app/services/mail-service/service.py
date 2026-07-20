@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_mail import ConnectionConfig, MessageSchema, MessageType, FastMail, NameEmail
 from pathlib import Path
+from starlette.exceptions import HTTPException as StarletteException
 
 # conf = ConnectionConfig(
 #     MAIL_USERNAME="your_login@gmail.com",
@@ -46,14 +47,16 @@ async def lifespan(cl: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-@app.exception_handler(Exception)
-async def universal_server_error_handler(req: Request, exc: Exception):
-
-    if isinstance(exc, HTTPException):
-        return JSONResponse(
+@app.exception_handler(StarletteException)
+async def universal_server_http_error_handler(req: Request, exc: StarletteException):
+    return JSONResponse(
+            status_code=exc.status_code,
             content={
                 "detail": exc.detail,}
         )
+
+@app.exception_handler(Exception)
+async def universal_server_error_handler(req: Request, exc: Exception):
 
     print(exc)
 
@@ -62,6 +65,7 @@ async def universal_server_error_handler(req: Request, exc: Exception):
         content={
             "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
     )
+
 
 async def get_db():
     factory = get_async_session()
