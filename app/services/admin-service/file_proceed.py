@@ -25,6 +25,55 @@ PATH_TO_ID = {'avto-moto/zapchasti-auto': 11, 'avto-moto/shiny-i-diski/shiny': 1
               'odezhda-obuv/detskaya-odezhda': 93, 'zhivotnye/dlya-koshek/korm-koshki': 1421,
               'deti/kolyaski/kolyaski-3-v-1': 1911}
 
+ATTRIBUTES_CACHE = {
+    1: [],
+    11: ["condition"],
+    12: [],
+    121: ["width", "height", "diameter", "seasonality"],
+    122: ["diameter", "drilling", "width", "offset", "hub_diameter", "disk_type"],
+    123: ["diameter", "drilling", "width"],
+    124: ["diameter"],
+    125: [],
+    1251: ["diameter"],
+    1252: [],
+    16: [],
+    17: [],
+    18: ["weight_category"],
+    20: [],
+    13: [],
+    131: [],
+    2: [],
+    21: [],
+    3: [],
+    31: [],
+    32: [],
+    33: [],
+    331: [],
+    4: [],
+    41: [],
+    46: [],
+    5: [],
+    51: [],
+    54: [],
+    511: [],
+    5111: [],
+    512: [],
+    5121: [],
+    7: [],
+    71: [],
+    74: [],
+    9: [],
+    91: ["condition", "size"],
+    911: ["size"],
+    93: ["condition", "size"],
+    14: [],
+    142: [],
+    1421: [],
+    19: [],
+    191: [],
+    1911: []
+}
+
 
 async def initial_proceed(filename):
     try:
@@ -89,6 +138,14 @@ async def with_images_proceed(
                         'attributes': row['attributes'],
 
                     }
+
+                    for element in row['attributes'].split(','):
+                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]]:
+                            return {
+                                "status": "False",
+                                "message": "Attribute not found!"
+                            }
+
 
                     imgs = row['images'].split(',')
 
@@ -155,6 +212,12 @@ async def without_images_proceed(filename, posts, response):
                         'price': row['price'],
                         'attributes': row['attributes'],
                     }
+                    for element in row['attributes'].split(','):
+                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]]:
+                            return {
+                                "status": "False",
+                                "message": "Attribute not found!"
+                            }
                 posts.append(post)
 
         response["metadata"]["status"] = "True"

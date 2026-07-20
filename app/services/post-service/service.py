@@ -385,11 +385,11 @@ async def manipulate(
                 cls = PostDB
 
                 metadata = data["metadata"]
-                changed_data = data["changed_data"]
+                changed_data = metadata["changed_data"]
 
                 post_id = metadata["post_id"]
 
-                posts = await db.execute(select(cls).where(PostDB.id == int(post_id)))
+                posts = await db.execute(select(cls).where(PostDB.id == str(post_id)))
                 post = posts.scalar_one_or_none()
 
                 if not post:
@@ -415,7 +415,7 @@ async def manipulate(
                 metadata = data["metadata"]
                 post_id = metadata["post_id"]
 
-                res = await db.execute(select(PostDB).where(PostDB.id == int(post_id)))
+                res = await db.execute(select(PostDB).where(PostDB.id == str(post_id)))
                 post = res.scalar_one_or_none()
 
                 if not post:

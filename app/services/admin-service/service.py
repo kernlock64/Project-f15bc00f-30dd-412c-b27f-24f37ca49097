@@ -11,6 +11,7 @@ from httpx import Limits
 from sqlalchemy import *
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException as StarletteException
+import json
 
 from db_init import get_async_session, engine
 from model import TicketsDB, PriceListsDB
@@ -266,9 +267,15 @@ async def manipulate(
                     )
 
             case "up":
+                dat = json.loads(data)
                 payload = {
-                    "changed_data": data,
+                    "changed_data": dat,
+                    "post_id": dat["post_id"],
                 }
+
+                dat.pop("post_id")
+
+                print(payload)
 
                 res, res_status = await send_request("up", payload)
 
@@ -281,7 +288,7 @@ async def manipulate(
 
             case "uu":
                 payload = {
-                    "changed_data": data,
+                    "changed_data": json.loads(data),
                 }
 
                 res, res_status = await send_request("uu", payload)
