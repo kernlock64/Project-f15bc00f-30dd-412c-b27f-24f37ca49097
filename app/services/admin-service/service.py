@@ -2,6 +2,7 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import *
+from fastapi.middleware.cors import CORSMiddleware
 
 import httpx
 import jwt
@@ -37,6 +38,18 @@ async def lifespan(cl: FastAPI):
         app.state.task.cancel()
 
 app = FastAPI(lifespan=lifespan)
+
+'''ВРЕМЕННО'''
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+'''ВРЕМЕННО'''
 
 async def get_httpx() -> httpx.AsyncClient:
     return app.state.http_client

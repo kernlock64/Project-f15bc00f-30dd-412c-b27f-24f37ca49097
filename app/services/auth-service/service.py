@@ -17,6 +17,7 @@ import asyncio
 from bcrypt import *
 import zxcvbn_rs_py as checker
 from starlette.exceptions import HTTPException as StarletteException
+from fastapi.middleware.cors import CORSMiddleware
 
 class RabbitMQGateway:
 
@@ -115,6 +116,15 @@ async def lifespan(cl: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+'''ВРЕМЕННО'''
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+'''ВРЕМЕННО'''
 
 @app.exception_handler(StarletteException)
 async def universal_server_http_error_handler(req: Request, exc: StarletteException):

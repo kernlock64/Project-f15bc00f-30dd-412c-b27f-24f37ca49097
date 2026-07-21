@@ -6,6 +6,7 @@ from httpx import Limits, AsyncClient
 from contextlib import asynccontextmanager
 import os
 from starlette.exceptions import HTTPException as StarletteException
+from fastapi.middleware.cors import CORSMiddleware
 
 MEDIA_KEY = os.getenv("MEDIA_KEY")
 
@@ -28,6 +29,17 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
     return request.app.state.http_client
 
 app = FastAPI(lifespan=lifespan)
+
+'''ВРЕМЕННО'''
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+'''ВРЕМЕННО'''
+
 
 @app.exception_handler(StarletteException)
 async def universal_server_http_error_handler(req: Request, exc: StarletteException):
