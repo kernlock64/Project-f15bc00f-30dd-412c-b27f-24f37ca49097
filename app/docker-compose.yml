@@ -69,8 +69,8 @@ services:
     image: axllent/mailpit:latest
     container_name: mailpit
     ports:
-      - "8025:8025"
-      - "1025:1025"
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
     restart: always
     networks:
       - internal
@@ -80,8 +80,8 @@ services:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: "admin"
       RABBITMQ_DEFAULT_PASS: "${DB_PASSWORD}"
@@ -103,7 +103,7 @@ services:
       - MEILI_MASTER_KEY=$MEILISEARCH_KEY
       - MEILI_NO_ANALYTICS=true
     ports:
-      - "${MEILISEARCH_PORT}:${MEILISEARCH_PORT}"
+      - "127.0.0.1:${MEILISEARCH_PORT}:${MEILISEARCH_PORT}"
     volumes:
       - meilidata:/var/lib/meilidata/data
     depends_on:
@@ -116,7 +116,7 @@ services:
   auth-service:
     build: ./services/auth-service
     ports:
-      - "${AUTH_PORT}:${AUTH_PORT}"
+      - "127.0.0.1:${AUTH_PORT}:${AUTH_PORT}"
     networks:
       - internal
     environment:
@@ -169,7 +169,7 @@ services:
   admin-service:
     build: ./services/admin-service
     ports:
-      - "${ADMIN_PORT}:${ADMIN_PORT}"
+      - "127.0.0.1:${ADMIN_PORT}:${ADMIN_PORT}"
     networks:
       - internal
     environment:
@@ -221,7 +221,7 @@ services:
   media-service:
     build: ./services/media-service
     ports:
-      - "${MEDIA_PORT}:${MEDIA_PORT}"
+      - "127.0.0.1:${MEDIA_PORT}:${MEDIA_PORT}"
     networks:
       - internal
     volumes:
