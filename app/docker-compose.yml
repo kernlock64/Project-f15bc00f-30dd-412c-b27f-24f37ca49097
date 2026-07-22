@@ -52,8 +52,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    ports:
-      - "${DB_PORT}:${DB_PORT}"
+    expose:
+      - "${DB_PORT}"
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
