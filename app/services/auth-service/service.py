@@ -18,6 +18,8 @@ from bcrypt import *
 import zxcvbn_rs_py as checker
 from starlette.exceptions import HTTPException as StarletteException
 from fastapi.middleware.cors import CORSMiddleware
+from shared.exception_handler import *
+
 
 class RabbitMQGateway:
 
@@ -126,25 +128,8 @@ app.add_middleware(
 )
 '''ВРЕМЕННО'''
 
-@app.exception_handler(StarletteException)
-async def universal_server_http_error_handler(req: Request, exc: StarletteException):
-    return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "detail": exc.detail,}
-        )
-
-@app.exception_handler(Exception)
-async def universal_server_error_handler(req: Request, exc: Exception):
-
-    print(exc)
-
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
-    )
-
+app.add_exception_handler(Exception, universal_server_error_handler)
+app.add_exception_handler(StarletteException, universal_server_http_error_handler)
 
 async def publish(data: dict, routing_key):
     exchange = app.state.exchange

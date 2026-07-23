@@ -4,9 +4,7 @@ import sqlalchemy
 from geoalchemy2 import WKTElement
 from meilisearch_python_sdk import AsyncClient as MeiliClient
 from meilisearch_python_sdk.models.settings import MeilisearchSettings
-from starlette.exceptions import HTTPException as StarletteException
 
-from fastapi.responses import JSONResponse
 from datetime import *
 from fastapi import FastAPI, Depends, Request, Body, status, HTTPException, Form
 import httpx
@@ -20,6 +18,7 @@ import aio_pika
 import asyncio
 from category_init import *
 import secrets
+from shared.exception_handler import *
 
 
 class RabbitMQGateway:
@@ -128,25 +127,8 @@ async def get_httpx(request: Request) -> httpx.AsyncClient:
 app = FastAPI(lifespan=lifespan)
 
 
-@app.exception_handler(StarletteException)
-async def universal_server_http_error_handler(req: Request, exc: StarletteException):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "detail": exc.detail, }
-    )
-
-
-@app.exception_handler(Exception)
-async def universal_server_error_handler(req: Request, exc: Exception):
-    print(exc)
-
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
-    )
-
+app.add_exception_handler(Exception, universal_server_error_handler)
+app.add_exception_handler(StarletteException, universal_server_http_error_handler)
 
 async def get_db():
     factory = app.state.db

@@ -2,10 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /service
 
-COPY requirements.txt .
+COPY ./services/post-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY ./services/post-service/ .
+
+COPY ./services/shared ./shared
 
 RUN chmod +x ./entrypoint.sh
 

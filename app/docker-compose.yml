@@ -114,7 +114,9 @@ services:
 
 
   auth-service:
-    build: ./services/auth-service
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
     ports:
       - "127.0.0.1:${AUTH_PORT}:${AUTH_PORT}"
     networks:
@@ -136,13 +138,16 @@ services:
       - ./services/auth-service:/service
       - /app/venv/
       - /app/__pycache__/
+      - ./services/shared:/service/shared
     depends_on:
       db:
         condition: service_healthy
     restart: always
 
   favourite-service:
-    build: ./services/favourite-service
+    build:
+      context: .
+      dockerfile: services/favourite-service/Dockerfile
     expose:
       - "${FAVOURITE_PORT}"
     networks:
@@ -161,13 +166,16 @@ services:
       - ./services/favourite-service:/service
       - /app/venv/
       - /app/__pycache__/
+      - ./services/shared:/service/shared
     depends_on:
       db:
         condition: service_healthy
     restart: always
 
   admin-service:
-    build: ./services/admin-service
+    build:
+      context: .
+      dockerfile: services/admin-service/Dockerfile
     ports:
       - "127.0.0.1:${ADMIN_PORT}:${ADMIN_PORT}"
     networks:
@@ -189,13 +197,16 @@ services:
       - ./services/admin-service:/service
       - /app/venv/
       - /app/__pycache__/
+      - ./services/shared:/service/shared
     depends_on:
       db:
         condition: service_healthy
     restart: always
 
   mail-service:
-    build: ./services/mail-service
+    build:
+      context: .
+      dockerfile: services/mail-service/Dockerfile
     expose:
       - "${MAIL_PORT}"
     networks:
@@ -213,13 +224,16 @@ services:
       - ./services/mail-service:/service
       - /app/venv/
       - /app/__pycache__/
+      - ./services/shared:/service/shared
     depends_on:
       db:
         condition: service_healthy
     restart: always
 
   media-service:
-    build: ./services/media-service
+    build:
+      context: .
+      dockerfile: services/media-service/Dockerfile
     ports:
       - "127.0.0.1:${MEDIA_PORT}:${MEDIA_PORT}"
     networks:
@@ -228,6 +242,7 @@ services:
       - ./services/media-service:/service
       - /app/venv/
       - /app/__pycache__/
+      - ./services/shared:/service/shared
     environment:
       - "PYTHONPATH=."
       - "SERVICE_PORT=${MEDIA_PORT}"
@@ -237,7 +252,9 @@ services:
     restart: always
 
   post-service:
-    build: ./services/post-service
+    build:
+      context: .
+      dockerfile: services/post-service/Dockerfile
     expose:
       - "${POST_PORT}"
     networks:
@@ -259,13 +276,16 @@ services:
       - ./services/post-service:/service
       - /app/venv/
       - /app/__pycache__/
+      - ./services/shared:/service/shared
     depends_on:
       db:
         condition: service_healthy
     restart: always
 
   user-service:
-    build: ./services/user-service
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
     expose:
       - "${USER_PORT}"
     networks:
@@ -285,6 +305,7 @@ services:
       - ./services/user-service:/service
       - /app/venv/
       - /app/__pycache__/
+      - ./services/shared:/service/shared
     depends_on:
       db:
         condition: service_healthy

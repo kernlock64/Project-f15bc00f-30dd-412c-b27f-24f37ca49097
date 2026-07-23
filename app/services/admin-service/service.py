@@ -6,16 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import httpx
 import jwt
-from fastapi import FastAPI, Depends, Request, UploadFile, File, status, HTTPException, Body, Form
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Body, Form
 from httpx import Limits
 from sqlalchemy import *
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.exceptions import HTTPException as StarletteException
 import json
 
 from db_init import get_async_session, engine
 from model import TicketsDB, PriceListsDB
+from shared.exception_handler import *
 
 limits = Limits(
     max_connections=1000,
@@ -60,24 +59,8 @@ async def get_db():
     async with factory() as session:
         yield session
 
-@app.exception_handler(StarletteException)
-async def universal_server_http_error_handler(req: Request, exc: StarletteException):
-    return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "detail": exc.detail,}
-        )
-
-@app.exception_handler(Exception)
-async def universal_server_error_handler(req: Request, exc: Exception):
-
-    print(exc)
-
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
-    )
+app.add_exception_handler(Exception, universal_server_error_handler)
+app.add_exception_handler(StarletteException, universal_server_http_error_handler)
 
 async def send_request(
         dest: str,

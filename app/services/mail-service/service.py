@@ -1,5 +1,4 @@
-from fastapi import FastAPI, Depends, Request, HTTPException, BackgroundTasks, Body, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Body
 from sqlalchemy import *
 import uuid
 from datetime import datetime, timezone
@@ -10,7 +9,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_mail import ConnectionConfig, MessageSchema, MessageType, FastMail, NameEmail
 from pathlib import Path
-from starlette.exceptions import HTTPException as StarletteException
+from shared.exception_handler import *
 
 # conf = ConnectionConfig(
 #     MAIL_USERNAME="your_login@gmail.com",
@@ -47,25 +46,8 @@ async def lifespan(cl: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-@app.exception_handler(StarletteException)
-async def universal_server_http_error_handler(req: Request, exc: StarletteException):
-    return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "detail": exc.detail,}
-        )
-
-@app.exception_handler(Exception)
-async def universal_server_error_handler(req: Request, exc: Exception):
-
-    print(exc)
-
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": "Что-то пошло не так. Пожалуйста, обратитесь в службу поддержки, если ошибка повторится."}
-    )
-
+app.add_exception_handler(Exception, universal_server_error_handler)
+app.add_exception_handler(StarletteException, universal_server_http_error_handler)
 
 async def get_db():
     factory = get_async_session()
