@@ -30,3 +30,4 @@ aiofiles==25.1.0
 aiocsv==1.4.0
 uuid==1.30
 cryptography==46.0.5
+Pillow==12.3.0

@@ -80,6 +80,8 @@ async def add_image(
 
         url = "http://filer:8888/" + name if not p_directory else "http://filer:8888/" + p_directory + "/" + name
 
+        print(url)
+
         await client.send(client.build_request(
             method="PUT",
             url=url,

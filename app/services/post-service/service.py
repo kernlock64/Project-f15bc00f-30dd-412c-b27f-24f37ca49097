@@ -6,7 +6,7 @@ from meilisearch_python_sdk import AsyncClient as MeiliClient
 from meilisearch_python_sdk.models.settings import MeilisearchSettings
 
 from datetime import *
-from fastapi import FastAPI, Depends, Request, Body, status, HTTPException, Form
+from fastapi import FastAPI, Depends, Request, Body, HTTPException, Form
 import httpx
 from sqlalchemy import *
 from httpx import Limits, AsyncClient
@@ -466,6 +466,7 @@ async def search_posts(
     result = await meili.index("posts").search(q, filter=fil, offset=offset, limit=limit)
 
     return {
+        "count": result.estimated_total_hits,
         "posts": result.hits if result.hits else [],
     }
 
@@ -496,7 +497,7 @@ async def get_post(
             detail=res1.json().get("details"),
         )
 
-    res2 = await client.get(f"http://user-service:5004/api/v1/users/producers/{post.author_id}")
+    res2 = await client.get(f"http://user-service:5004/api/v1/users/producers/post/{post.author_id}")
 
     if res2.status_code != 200:
         print(res2.text, res2.status_code)
@@ -664,13 +665,19 @@ async def report_post(
 
 @app.get("/api/v1/posts/{path:path}")
 async def get_posts(
-        path: str,
+        path: str = None,
 ):
     if path.isdigit():
         raise HTTPException(
             status_code=400,
             detail="Invalid data!",
         )
+
+    if not path:
+        cat = [i for i in CATEGORIES_CACHE.values() if not i["parent_id"]]
+        return {
+            "categories": cat,
+        }
 
     category_id = PATH_TO_ID.get(path)
 

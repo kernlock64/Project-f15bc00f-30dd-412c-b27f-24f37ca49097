@@ -64,11 +64,11 @@ async def send_email_async(subject: str, email_to: str, body: dict, template_nam
         subtype=MessageType.html,
         attachments = [
         {
-            "file": "static/images/logo.png",
+            "file": "static/images/logo.jpeg",
             "headers": {"Content-ID": "<logo_image>",
                         "Content-Disposition": "inline"},
             "mime_type": "image",
-            "mime_subtype": "png"
+            "mime_subtype": "jpeg"
         }
     ])
 
@@ -137,7 +137,7 @@ async def suspicious_activity(
         db: AsyncSession = Depends(get_db),
 ):
 
-    email_to = data["email_to"]\
+    email_to = data["email_to"]
 
     if not email_to:
         raise HTTPException(

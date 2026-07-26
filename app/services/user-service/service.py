@@ -57,7 +57,7 @@ async def lifespan(cl: FastAPI):
         durable=True
     )
 
-    async with aiofiles.open("static/default_avatar.png", mode="rb") as f:
+    async with aiofiles.open("static/default_avatar.jpeg", mode="rb") as f:
         avatar_cached = await f.read()
 
     deletion = await rabbit.channel.declare_queue("v1.queue.deletion")
@@ -454,6 +454,32 @@ async def get_user_prod(
         "posts": str(res.json()["posts"]),
     }
 
+@app.get("/api/v1/users/producers/post/{uid}")
+async def get_user_prod_case_post(
+        uid: str,
+        db: AsyncSession = Depends(get_db),
+):
+
+    users = await db.execute(select(ProdDB).where(ProdDB.id == uid))
+    user = users.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="NO_SUCH_USER",
+        )
+
+    return {
+        "id": str(user.id),
+        "name": str(user.name),
+        "email": str(user.email),
+        "image": str(user.image),
+        "date_created": str(user.date_created),
+        "full_name": str(user.full_name),
+        "telephone": str(user.telephone),
+        "description": str(user.description),
+        "delivery_description": str(user.delivery_description),
+    }
 
 @app.post("/api/v1/users/add-user")
 async def add_user(
@@ -475,7 +501,7 @@ async def add_user(
 
     req = client.build_request(
         method="POST",
-        url="http://media-service:5001/api/v1/media/add-image/png",
+        url="http://media-service:5001/api/v1/media/add-image/jpeg",
         headers={"X-Key": MEDIA_KEY, "X-Name": filename},
         content=read_file(),
     )
@@ -490,11 +516,11 @@ async def add_user(
         )
     else:
         user = CustomersDB(id=uid, username=username, email=email, date_created=datetime.now(timezone.utc),
-                           image=str(filename + '.' + "png")) if role == "1" else ProdDB(
+                           image=str(filename + '.' + "jpeg")) if role == "1" else ProdDB(
             name=username, id=uid, email=email,
             date_created=datetime.now(
                 timezone.utc),
-            image=str(filename + '.' + "png"),
+            image=str(filename + '.' + "jpeg"),
             telephone=telephone, )
         db.add(user)
         await db.commit()

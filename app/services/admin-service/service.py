@@ -139,7 +139,6 @@ async def add_price_list(
 
     try:
         if data["metadata"]["status"] != "True":
-            print(data)
             os.remove(f"temp/{name}.zip")
             raise HTTPException(
                 status_code=400,

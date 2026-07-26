@@ -5,6 +5,7 @@ import uuid
 from service import get_httpx
 from fastapi import Response
 import os
+from watermark import *
 
 MEDIA_KEY = os.getenv('MEDIA_KEY')
 
@@ -120,12 +121,12 @@ async def with_images_proceed(
     try:
         images = []
         client = await get_httpx()
-        images_dir = str(uuid.uuid4())
         with zipfile.ZipFile(f'temp/{filename}', 'r') as z:
             with z.open('posts.csv') as f:
                 text_file = io.TextIOWrapper(f, encoding='utf-8')
                 reader = csv.DictReader(text_file)
                 for row in reader:
+                    images_dir = str(uuid.uuid4())
                     post = {
                         'title': row['title'],
                         'description': row['description'],
@@ -149,6 +150,13 @@ async def with_images_proceed(
 
                     imgs = row['images'].split(',')
 
+                    for i in imgs:
+                        if i.split(".")[1] != "jpeg":
+                            return {
+                                "status": "False",
+                                "message": "Incorrect file extension!"
+                            }
+
                     if not row['title_image'] in imgs:
                         return {
                             "status": "False",
@@ -158,25 +166,32 @@ async def with_images_proceed(
                     for m in imgs:
                         with z.open(f'imgs/{m}', "r") as k:
 
-                            name = str(uuid.uuid4()) + '.png'
+                            info = z.getinfo(f'imgs/{m}')
+
+                            if info.file_size > 10000000:
+                                return {
+                                    "status": "False",
+                                    "message": "Incorrect file size!"
+                                }
+
+                            watermarked_i = watermark(k)
+
+                            name = str(uuid.uuid4())
+                            mod_name = name + ".jpeg"
 
                             if str(m) == row['title_image']:
-                                post["title_image"] = name
-
-                            async def read_file():
-                                while chunk := k.read(64 * 1024):
-                                    yield chunk
+                                post["title_image"] = mod_name
 
                             req = client.build_request(
                                 method="POST",
-                                url=f"http://media-service:5001/api/v1/media/add-image/png?p_directory={images_dir}",
+                                url=f"http://media-service:5001/api/v1/media/add-image/jpeg?p_directory={images_dir}",
                                 headers={"X-Key": MEDIA_KEY, "X-Name": name},
-                                content=read_file(),
+                                content=watermarked_i.getvalue(),
                             )
 
-                            resp = await client.send(req, stream=True)
+                            resp = await client.send(req)
 
-                            images.append(name)
+                            images.append(mod_name)
 
                             if resp.status_code != 200:
                                 return {
@@ -184,7 +199,7 @@ async def with_images_proceed(
                                     "message": "Error adding image",
                                 }
 
-                posts.append(post)
+                posts.append(images_dir + "/" +  post)
 
         response["metadata"]["status"] = "True"
         return response
