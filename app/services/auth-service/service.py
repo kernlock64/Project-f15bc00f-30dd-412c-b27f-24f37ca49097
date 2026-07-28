@@ -1,7 +1,6 @@
 import uuid
 import json
 from fastapi import FastAPI, Depends, Request, Response, Form, status, BackgroundTasks, Body, HTTPException
-from fastapi.responses import JSONResponse
 from phonenumbers import NumberParseException
 from starlette.responses import StreamingResponse
 from starlette.datastructures import MutableHeaders
@@ -16,7 +15,6 @@ import aio_pika
 import asyncio
 from bcrypt import *
 import zxcvbn_rs_py as checker
-from starlette.exceptions import HTTPException as StarletteException
 from fastapi.middleware.cors import CORSMiddleware
 from shared.exception_handler import *
 
@@ -305,7 +303,6 @@ async def proxy(request: Request, call_next):
                 content={
                     "detail": "Password  has been already changed!"}
             )
-        print(request.url.path)
         if request.url.path != "/api/v1/change-password":
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,

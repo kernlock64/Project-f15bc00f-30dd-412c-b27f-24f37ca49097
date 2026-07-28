@@ -1,30 +1,13 @@
 import zipfile
-import io
 import csv
 import uuid
 from service import get_httpx
 from fastapi import Response
 import os
 from watermark import *
+from categories_cache import *
 
 MEDIA_KEY = os.getenv('MEDIA_KEY')
-
-PATH_TO_ID = {'avto-moto/zapchasti-auto': 11, 'avto-moto/shiny-i-diski/shiny': 121,
-              'avto-moto/shiny-i-diski/diski': 122,
-              'avto-moto/shiny-i-diski/kolesa-v-sbore': 123, 'avto-moto/shiny-i-diski/kolpaki': 124,
-              'avto-moto/shiny-i-diski/prinadlezhnosti-dlya-koles/kamery': 1251,
-              'avto-moto/shiny-i-diski/prinadlezhnosti-dlya-koles/metizy-kolesnye': 1252, 'avto-moto/auto-media': 16,
-              'avto-moto/signalizacii': 17, 'avto-moto/avtokresla': 18, 'avto-moto/autoliteratura': 20,
-              'avto-moto/moto/motozapchasti': 131, 'vodnaya-tekhnika/zapchasti-voda': 21,
-              'cifrovaya-tekhnika/foto-video': 31,
-              'cifrovaya-tekhnika/telefony-gadzhety': 32, 'cifrovaya-tekhnika/kompyutery/noutbuki': 331,
-              'bytovaya-tekhnika/holodilniki': 41, 'bytovaya-tekhnika/stiralnye-mashiny': 46, 'stroyka/santehnika': 51,
-              'stroyka/plitka': 54, 'stroyka/pilomaterialy/doska': 5111, 'stroyka/drevesnye-plity/fanera': 5121,
-              'mebel/divany': 71,
-              'mebel/kuhni': 74, 'odezhda-obuv/zhenskaya-odezhda': 91,
-              'odezhda-obuv/zhenskaya-odezhda/dlya-beremennyh': 911,
-              'odezhda-obuv/detskaya-odezhda': 93, 'zhivotnye/dlya-koshek/korm-koshki': 1421,
-              'deti/kolyaski/kolyaski-3-v-1': 1911}
 
 ATTRIBUTES_CACHE = {
     1: [],
@@ -141,12 +124,19 @@ async def with_images_proceed(
                     }
 
                     for element in row['attributes'].split(','):
-                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]]:
+                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]] and \
+                                str(element).split(":")[0] != "condition":
                             return {
                                 "status": "False",
                                 "message": "Attribute not found!"
                             }
 
+                    if str(element).split(":")[0] == "condition" and str(element).split(":")[1].lower() not in ["new",
+                                                                                                                "used"]:
+                        return {
+                            "status": "False",
+                            "message": "Wrong condition!"
+                        }
 
                     imgs = row['images'].split(',')
 
@@ -199,10 +189,17 @@ async def with_images_proceed(
                                     "message": "Error adding image",
                                 }
 
-                posts.append(images_dir + "/" +  post)
+                posts.append(images_dir + "/" + post)
 
-        response["metadata"]["status"] = "True"
-        return response
+        for element in row['attributes'].split(','):
+            if str(element).split(":")[0] == "condition":
+                response["metadata"]["status"] = "True"
+                return response
+
+        return {
+            "status": "False",
+            "message": "No condition!"
+        }
 
     except Exception as e:
         return {
@@ -228,15 +225,31 @@ async def without_images_proceed(filename, posts, response):
                         'attributes': row['attributes'],
                     }
                     for element in row['attributes'].split(','):
-                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]]:
+                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]] and \
+                                str(element).split(":")[0] != "condition":
                             return {
                                 "status": "False",
                                 "message": "Attribute not found!"
                             }
+
+                    if str(element).split(":")[0] == "condition" and str(element).split(":")[1].lower() not in ["new",
+                                                                                                                "used"]:
+                        return {
+                            "status": "False",
+                            "message": "Wrong condition!"
+                        }
+
                 posts.append(post)
 
-        response["metadata"]["status"] = "True"
-        return response
+        for element in row['attributes'].split(','):
+            if str(element).split(":")[0] == "condition":
+                response["metadata"]["status"] = "True"
+                return response
+
+        return {
+            "status": "False",
+            "message": "No condition!"
+        }
 
     except Exception as e:
         return {
