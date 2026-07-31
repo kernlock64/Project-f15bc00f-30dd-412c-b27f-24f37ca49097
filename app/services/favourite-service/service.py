@@ -16,6 +16,8 @@ from expiringdict import ExpiringDict
 import asyncio
 import aio_pika
 from shared.exception_handler import *
+from shared.logger_middleware import *
+from shared.logger import *
 
 
 limits = Limits(
@@ -81,6 +83,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
+app.middleware("http")(request_trace)
 
 async def get_db():
     factory = app.state.db
@@ -209,7 +212,15 @@ async def add_favourite(
             resp = await client.get(f"http://post-service:5003/api/v1/posts/post/{post_id}")
 
             if resp.status_code != 200:
-                print(resp.text, resp.status_code)
+                logger.error(
+                    "External server error has occurred!", extra={
+                        "status_code": resp.status_code,
+                        "post_id": post_id,
+                        "error": resp.text[:500],
+                        "request_id": request_id,
+                    }
+                )
+
                 raise HTTPException(
                     status_code=resp.status_code,
                     detail=resp.json().get("detail"),
@@ -224,12 +235,28 @@ async def add_favourite(
                             p_image=str(r["title_image"])))
             await db.commit()
 
+            logger.info(
+                "Favourites mark has been successfully added!", extra={
+                    "post_id": post_id,
+                    "user_id": user_id,
+                    "request_id": request_id,
+                }
+            )
+
         else:
             db.add(
                 FavouriteDB(id=str(uuid.uuid4()), pid=post_id, uid=user_id, p_title=str(c["title"]),
                             p_image=str(c["title_image"])))
 
             await db.commit()
+
+            logger.info(
+                "Favourites mark has been successfully added!", extra={
+                    "post_id": post_id,
+                    "user_id": user_id,
+                    "request_id": request_id,
+                }
+            )
 
 async def delete_favourite(
         post_id: int,
@@ -239,3 +266,11 @@ async def delete_favourite(
         await db.execute(
             delete(FavouriteDB).where(FavouriteDB.uid == str(user_id), FavouriteDB.pid == str(post_id)))
         await db.commit()
+
+        logger.info(
+            "Favourites mark has been successfully deleted!", extra={
+                "post_id": post_id,
+                "user_id": user_id,
+                "request_id": request_id,
+            }
+        )

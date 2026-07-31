@@ -17,7 +17,8 @@ from bcrypt import *
 import zxcvbn_rs_py as checker
 from fastapi.middleware.cors import CORSMiddleware
 from shared.exception_handler import *
-
+from shared.logger_middleware import *
+from shared.logger import *
 
 class RabbitMQGateway:
 
@@ -128,6 +129,7 @@ app.add_middleware(
 
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
+app.middleware("http")(request_trace)
 
 async def publish(data: dict, routing_key):
     exchange = app.state.exchange
@@ -172,6 +174,14 @@ async def user_check(uid, eng):
 
         if user.status != "ACTIVE":
             await db.delete(user)
+
+            logger.info(
+                f"User has been deleted after period of inactivity!", extra={
+                    "request_id": request_id,
+                    "user_id": uid,
+                }
+            )
+
         await db.commit()
 
 
@@ -215,6 +225,13 @@ ROUTES_NA = {
 
 @app.middleware("http")
 async def proxy(request: Request, call_next):
+
+    logger.info(
+        f"Request from {request.client.host} to {request.url.path}", extra={
+            "request_id": request_id,
+        }
+    )
+
     if request.url.path in {"/api/v1/registration", "/api/v1/login", "/api/v1/refresh", "/api/v1/forgot-password",
                             "/api/v1/user-confirm"}:
         return await call_next(request)
@@ -376,6 +393,13 @@ async def user_confirm(
     user.status = "ACTIVE" if role == 1 else "VERIFIED"
     await db.commit()
 
+    logger.info(
+        f"User status has been switched from PENDING to {user.status}", extra={
+            "request_id": request_id,
+            "user_id": uid,
+        }
+    )
+
     if role == 2:
         payload = {
             "details": {"phone_number": telephone,
@@ -393,7 +417,14 @@ async def user_confirm(
         resp = await client.post("http://mail-service:5002/api/v1/mail/on-requesting-provider", json=templ_data,
                                  headers={"Content-Type": "application/json"})
         if resp.status_code != 200:
-            print(resp.text, resp.status_code)
+            logger.error(
+                "External server error has occurred!", extra={
+                    "status_code": resp.status_code,
+                    "user_id": uid,
+                    "error": resp.text[:500],
+                    "request_id": request_id,
+                }
+            )
             raise HTTPException(
                 status_code=resp.status_code,
                 detail=resp.json().get("detail"),
@@ -401,7 +432,14 @@ async def user_confirm(
 
         req = await client.post("http://admin-service:5006/api/v1/management/web-health/request", json=payload)
         if req.status_code != 200:
-            print(req.text, req.status_code)
+            logger.error(
+                "External server error has occurred!", extra={
+                    "status_code": req.status_code,
+                    "user_id": uid,
+                    "error": req.text[:500],
+                    "request_id": request_id,
+                }
+            )
             raise HTTPException(
                 status_code=req.status_code,
                 detail=req.json().get("detail"),
@@ -416,7 +454,14 @@ async def user_confirm(
     })
 
     if req1.status_code != 200:
-        print(req1.text, req1.status_code)
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": req1.status_code,
+                "user_id": uid,
+                "error": req1.text[:500],
+                "request_id": request_id,
+            }
+        )
         raise HTTPException(
             status_code=req1.status_code,
             detail=req1.json().get("detail"),
@@ -431,7 +476,14 @@ async def user_confirm(
                                  headers={"Content-Type": "application/json"})
 
         if req2.status_code != 200:
-            print(req2.text, req2.status_code)
+            logger.error(
+                "External server error has occurred!", extra={
+                    "status_code": req2.status_code,
+                    "user_id": uid,
+                    "error": req2.text[:500],
+                    "request_id": request_id,
+                }
+            )
 
             raise HTTPException(
                 status_code=req2.status_code,
@@ -533,12 +585,25 @@ async def manipulate(
                                             headers={"Content-Type": "application/json"})
 
                     if req.status_code != 200:
-                        print(req.text, req.status_code)
-
+                        logger.error(
+                            "External server error has occurred!", extra={
+                                "status_code": req.status_code,
+                                "user_id": user_id,
+                                "error": req.text[:500],
+                                "request_id": request_id,
+                            }
+                        )
                         raise HTTPException(
                             status_code=req.status_code,
                             detail=req.json().get("detail"),
                         )
+
+                    logger.info(
+                        f"User status has been switched from VERIFIED to ACTIVE", extra={
+                            "request_id": request_id,
+                            "user_id": user_id,
+                        }
+                    )
 
                     return None
 
@@ -557,12 +622,26 @@ async def manipulate(
                                             headers={"Content-Type": "application/json"})
 
                     if req.status_code != 200:
-                        print(req.text, req.status_code)
-
+                        logger.error(
+                            "External server error has occurred!", extra={
+                                "status_code": req.status_code,
+                                "user_id": user_id,
+                                "error": req.text[:500],
+                                "request_id": request_id,
+                            }
+                        )
                         raise HTTPException(
                             status_code=req.status_code,
                             detail=req.json().get("detail"),
                         )
+
+                    logger.info(
+                        f"User status has been switched from VERIFIED to REJECTED", extra={
+                            "request_id": request_id,
+                            "user_id": user_id,
+                        }
+                    )
+
                     return None
 
                 else:
@@ -598,7 +677,14 @@ async def manipulate(
 
                 if resp.status_code != 200:
                     await db.rollback()
-                    print(resp.text, resp.status_code)
+                    logger.error(
+                        "External server error has occurred!", extra={
+                            "status_code": resp.status_code,
+                            "user_id": uid,
+                            "error": resp.text[:500],
+                            "request_id": request_id,
+                        }
+                    )
                     raise HTTPException(
                         status_code=resp.status_code,
                         detail=resp.json().get("detail"),
@@ -609,6 +695,13 @@ async def manipulate(
                 response.delete_cookie(key="access_t")
 
                 await db.commit()
+
+                logger.info(
+                    f"User was successfully deleted!", extra={
+                        "request_id": request_id,
+                        "user_id": uid,
+                    }
+                )
 
                 return response
 
@@ -621,6 +714,7 @@ async def manipulate(
 
 @app.post("/api/v1/forgot-password")
 async def forgot_password(
+        request: Request,
         db: AsyncSession = Depends(get_db),
         email: str = Form(...),
         client: AsyncClient = Depends(get_httpx),
@@ -654,11 +748,26 @@ async def forgot_password(
                                 headers={"Content-Type": "application/json"})
 
         if req.status_code != 200:
-            print(req.text, req.status_code)
+            logger.error(
+                "External server error has occurred!", extra={
+                    "status_code": req.status_code,
+                    "ip": request.client.host,
+                    "error": req.text[:500],
+                    "request_id": request_id,
+                }
+            )
+
             raise HTTPException(
                 status_code=req.status_code,
                 detail=req.json().get("detail"),
             )
+
+        logger.info(
+            f"Forgot password token has been issued!", extra={
+                "request_id": request_id,
+                "ip": request.client.host,
+            }
+        )
 
     return None
 
@@ -691,6 +800,13 @@ async def logout(
     response = JSONResponse(status_code=status.HTTP_200_OK, content={"status": "True"})
     response.delete_cookie(key="refreshment_t")
     response.delete_cookie(key="access_t")
+
+    logger.info(
+        f"User logout", extra={
+            "request_id": request_id,
+            "user_id": uid,
+        }
+    )
 
     return response
 
@@ -738,15 +854,15 @@ async def registration(
             status_code=400,
             detail=check["message"],
         )
-
+    uid = str(uuid.uuid4())
     user = AuthDB(email=email, hashed_password=hashed_password, date=datetime.now(tz=timezone.utc),
-                  uid=str(uuid.uuid4()),
+                  uid=uid,
                   role=role, status="PENDING", token_version=1, username=username) if role == 1 else AuthDB(
         email=email,
         hashed_password=hashed_password,
         date=datetime.now(
             tz=timezone.utc),
-        uid=str(uuid.uuid4()),
+        uid=uid,
         role=role, status="PENDING",
         token_version=1,
         username=username, )
@@ -777,13 +893,28 @@ async def registration(
                             headers={"Content-Type": "application/json"})
 
     if req.status_code != 200:
-        print(req.text, req.status_code)
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": req.status_code,
+                "user_id": uid,
+                "error": req.text[:500],
+                "request_id": request_id,
+            }
+        )
         raise HTTPException(
             status_code=req.status_code,
             detail=req.json().get("detail"),
         )
 
     await session.commit()
+    await iternal_publish(uid)
+
+    logger.info(
+        f"User initial profile was created", extra={
+            "request_id": request_id,
+            "user_id": uid,
+        }
+    )
 
     return message
 
@@ -828,7 +959,15 @@ async def delete(
                              headers={"Content-Type": "application/json"})
     if resp.status_code != 200:
         await db.rollback()
-        print(resp.text, resp.status_code)
+
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": resp.status_code,
+                "user_id": uid,
+                "error": resp.text[:500],
+                "request_id": request_id,
+            }
+        )
         raise HTTPException(
             status_code=resp.status_code,
             detail=resp.json().get("detail"),
@@ -838,6 +977,14 @@ async def delete(
     response.delete_cookie(key="refreshment_t")
     response.delete_cookie(key="access_t")
     await db.commit()
+
+    logger.info(
+        f"User has been deleted!", extra={
+            "request_id": request_id,
+            "user_id": uid,
+        }
+    )
+
     return response
 
 
@@ -883,9 +1030,18 @@ async def login(
                 background_tasks.add_task(deletion_task, str(user.uid), str(user.role))
                 users = await session.execute(select(AuthDB).where(AuthDB.uid == str(user.uid)))
                 user = users.scalar_one_or_none()
+                uid = user.uid
                 user.token_version += 1
                 await session.delete(user)
                 await session.commit()
+
+                logger.info(
+                    f"User profile was deleted because of verdict", extra={
+                        "request_id": request_id,
+                        "user_id": uid,
+                    }
+                )
+
                 raise HTTPException(
                     status_code=401,
                     detail="К сожалению ваша заявка была отклонена."
@@ -951,13 +1107,27 @@ async def change_password(
 
         if resp.status_code != 200:
             await session.rollback()
-            print(resp.text, resp.status_code)
+            logger.error(
+                "External server error has occurred!", extra={
+                    "status_code": resp.status_code,
+                    "user_id": uid,
+                    "error": resp.text[:500],
+                    "request_id": request_id,
+                }
+            )
             raise HTTPException(
                 status_code=resp.status_code,
                 detail=resp.json().get("detail"),
             )
 
         await session.commit()
+
+        logger.info(
+            f"User password was changed", extra={
+                "request_id": request_id,
+                "user_id": uid,
+            }
+        )
 
         return None
 
@@ -987,6 +1157,13 @@ async def change_email(
                       routing_key="v1.queue.changes")
 
         await session.commit()
+
+        logger.info(
+            f"User email was changed", extra={
+                "request_id": request_id,
+                "user_id": uid,
+            }
+        )
 
 
 @app.post("/api/v1/refresh")
@@ -1042,8 +1219,17 @@ async def refresh(
                                      headers={"Content-Type": "application/json"})
 
             if resp.status_code != 200:
+
                 await session.rollback()
-                print(resp.text, resp.status_code)
+                logger.error(
+                    "External server error has occurred!", extra={
+                        "status_code": resp.status_code,
+                        "user_id": uid,
+                        "error": resp.text[:500],
+                        "request_id": request_id,
+                    }
+                )
+
                 raise HTTPException(
                     status_code=resp.status_code,
                     detail=resp.json().get("detail"),

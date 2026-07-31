@@ -31,3 +31,4 @@ aiocsv==1.4.0
 uuid==1.30
 cryptography==46.0.5
 Pillow==12.3.0
+python-json-logger==4.1.0

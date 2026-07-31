@@ -13,6 +13,17 @@ services:
     command: 'master -ip=master -ip.bind=0.0.0.0 -metricsPort=9324'
     restart: always
 
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+    networks:
+      - internal
+
   volume:
     image: chrislusf/seaweedfs
     expose:
@@ -25,6 +36,35 @@ services:
     depends_on:
       - master
     restart: always
+
+  vector:
+    image: timberio/vector:0.34.X-alpine
+    container_name: vector
+    networks:
+      - internal
+    expose:
+      - 8686
+    restart: always
+    volumes:
+      - ./vector.yaml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - vector_buffer:/var/lib/vector
+    depends_on:
+      - clickhouse
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    networks:
+      - internal
+    expose:
+      - 8123
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=123
+    volumes:
+      - ch_data:/var/lib/clickhouse
+      - ./initial.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
   filer:
     image: chrislusf/seaweedfs
@@ -100,6 +140,7 @@ services:
       retries: 5
       start_period: 15s
     environment:
+      - MEILI_LOG_LEVEL=ERROR
       - MEILI_MASTER_KEY=$MEILISEARCH_KEY
       - MEILI_NO_ANALYTICS=true
     ports:
@@ -320,3 +361,5 @@ networks:
 volumes:
   postgres_data:
   meilidata:
+  vector_buffer:
+  ch_data:

@@ -27,3 +27,4 @@ PyJWT==2.11.0
 python-multipart==0.0.22
 expiringdict==1.2.2
 aio_pika==9.6.1
+python-json-logger==4.1.0

@@ -15,6 +15,8 @@ import json
 from db_init import get_async_session, engine
 from model import TicketsDB, PriceListsDB
 from shared.exception_handler import *
+from shared.logger_middleware import *
+from shared.logger import *
 
 limits = Limits(
     max_connections=1000,
@@ -22,6 +24,7 @@ limits = Limits(
 )
 
 MAX_AD_SIZE = 30 * 1024 * 1024
+
 
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
@@ -35,6 +38,7 @@ async def lifespan(cl: FastAPI):
         await client.aclose()
         await engine.dispose()
         app.state.task.cancel()
+
 
 app = FastAPI(lifespan=lifespan)
 
@@ -50,6 +54,7 @@ app.add_middleware(
 
 '''ВРЕМЕННО'''
 
+
 async def get_httpx() -> httpx.AsyncClient:
     return app.state.http_client
 
@@ -59,12 +64,16 @@ async def get_db():
     async with factory() as session:
         yield session
 
+
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
+app.middleware("http")(request_trace)
+
 
 async def send_request(
         dest: str,
         data: dict,
+        request: Request,
 ) -> httpx.Response:
     client = await get_httpx()
 
@@ -107,11 +116,19 @@ async def send_request(
 
     resp = await client.post(url=dest_url[dest[1]], headers=headers, json=data)
 
+    logger.info(
+        f"Admin request to {dest_url[dest[1]]} was created", extra={
+            "ip": request.client.host,
+            "request_id": request_id,
+        }
+    )
+
     return resp, resp.status_code
 
 
 @app.post("/api/v1/management/web-health/push")
 async def add_price_list(
+        request: Request,
         file: UploadFile = File(...),
         db: AsyncSession = Depends(get_db),
 ):
@@ -133,7 +150,7 @@ async def add_price_list(
     data = await file.read()
 
     with open(f'temp/{name}.zip', 'wb') as f:
-            f.write(data)
+        f.write(data)
 
     data = await initial_proceed(f"{name}.zip")
 
@@ -147,7 +164,14 @@ async def add_price_list(
         price_list_name = data["metadata"]["price-list-name"]
 
     except Exception as e:
-        print(data, e)
+        logger.error(
+            "Error in proceeding data!", extra={
+                "data": data,
+                "ip": request.client.host,
+                "error": e,
+                "request_id": request_id,
+            }
+        )
         os.remove(f"temp/{name}.zip")
         raise HTTPException(
             status_code=400,
@@ -156,26 +180,43 @@ async def add_price_list(
 
     db.add(PriceListsDB(id=name, name=price_list_name))
 
-    res, res_status = await send_request("ap", data)
+    res, res_status = await send_request("ap", data, request)
 
     if res_status != 200:
-            print(res)
-            raise HTTPException(
-                status_code=res_status,
-                detail=res.json().get("detail"),
-            )
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": res_status,
+                "ip": request.client.host,
+                "error": res.text[:500],
+                "request_id": request_id,
+            }
+        )
+        raise HTTPException(
+            status_code=res_status,
+            detail=res.json().get("detail"),
+        )
 
     await db.commit()
+
     os.remove(f"temp/{name}.zip")
+
 
 @app.get("/api/v1/management/web-health/get-p")
 async def get_post(
+        request: Request,
         pid: str = Form(...)
 ):
-    res, res_status = await send_request("gp", {"pid": pid})
+    res, res_status = await send_request("gp", {"pid": pid}, request)
 
     if res_status != 200:
-        print(res)
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": res_status,
+                "ip": request.client.host,
+                "error": res.text[:500],
+                "request_id": request_id,
+            }
+        )
         raise HTTPException(
             status_code=res_status,
             detail=res.json().get("detail"),
@@ -186,36 +227,53 @@ async def get_post(
 
 @app.get("/api/v1/management/web-health/get-ps")
 async def get_posts(
+        request: Request,
         page: int = 1,
         limit: int = 10,
         fil: str = None,
         q: str = None,
 ):
-    res, res_status = await send_request("sp", {"page": page, "limit": limit, "filter": fil, "query": q})
+    res, res_status = await send_request("sp", {"page": page, "limit": limit, "filter": fil, "query": q}, request)
 
     if res_status != 200:
-            print(res)
-            raise HTTPException(
-                status_code=res_status,
-                detail=res.json().get("detail"),
-            )
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": res_status,
+                "ip": request.client.host,
+                "error": res.text[:500],
+                "request_id": request_id,
+            }
+        )
+
+        raise HTTPException(
+            status_code=res_status,
+            detail=res.json().get("detail"),
+        )
 
     return res.json()
 
 
 @app.get("/api/v1/management/web-health/get-u")
 async def get_user(
+        request: Request,
         uid: str = Form(...)
 
 ):
-    res, res_status = await send_request("gu", {"uid": uid})
+    res, res_status = await send_request("gu", {"uid": uid}, request)
 
     if res_status != 200:
-            print(res)
-            raise HTTPException(
-                status_code=res_status,
-                detail=res.json().get("detail"),
-            )
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": res_status,
+                "ip": request.client.host,
+                "error": res.text[:500],
+                "request_id": request_id,
+            }
+        )
+        raise HTTPException(
+            status_code=res_status,
+            detail=res.json().get("detail"),
+        )
 
     return res.json()
 
@@ -227,6 +285,7 @@ async def get_users():
 
 @app.post("/api/v1/management/web-health/m/{destination}")
 async def manipulate(
+        request: Request,
         destination: str,
         data: str = Form(...),
 ):
@@ -238,10 +297,17 @@ async def manipulate(
                     "post_id": data,
                 }
 
-                res, res_status = await send_request("dp", payload)
+                res, res_status = await send_request("dp", payload, request)
 
                 if res_status != 200:
-                    print(res)
+                    logger.error(
+                        "External server error has occurred!", extra={
+                            "status_code": res_status,
+                            "ip": request.client.host,
+                            "error": res.text[:500],
+                            "request_id": request_id,
+                        }
+                    )
                     raise HTTPException(
                         status_code=res_status,
                         detail=res.json().get("detail"),
@@ -252,10 +318,17 @@ async def manipulate(
                     "user_id": data,
                 }
 
-                res, res_status = await send_request("da", payload)
+                res, res_status = await send_request("da", payload, request)
 
                 if res_status != 200:
-                    print(res)
+                    logger.error(
+                        "External server error has occurred!", extra={
+                            "status_code": res_status,
+                            "ip": request.client.host,
+                            "error": res.text[:500],
+                            "request_id": request_id,
+                        }
+                    )
                     raise HTTPException(
                         status_code=res_status,
                         detail=res.json().get("detail"),
@@ -270,12 +343,17 @@ async def manipulate(
 
                 dat.pop("post_id")
 
-                print(payload)
-
-                res, res_status = await send_request("up", payload)
+                res, res_status = await send_request("up", payload, request)
 
                 if res_status != 200:
-                    print(res)
+                    logger.error(
+                        "External server error has occurred!", extra={
+                            "status_code": res_status,
+                            "ip": request.client.host,
+                            "error": res.text[:500],
+                            "request_id": request_id,
+                        }
+                    )
                     raise HTTPException(
                         status_code=res_status,
                         detail=res.json().get("detail"),
@@ -286,10 +364,17 @@ async def manipulate(
                     "changed_data": json.loads(data),
                 }
 
-                res, res_status = await send_request("uu", payload)
+                res, res_status = await send_request("uu", payload, request)
 
                 if res_status != 200:
-                    print(res)
+                    logger.error(
+                        "External server error has occurred!", extra={
+                            "status_code": res_status,
+                            "ip": request.client.host,
+                            "error": res.text[:500],
+                            "request_id": request_id,
+                        }
+                    )
                     raise HTTPException(
                         status_code=res_status,
                         detail=res.json().get("detail"),
@@ -301,6 +386,7 @@ async def manipulate(
             "Отсутствует один, или несколько обязательных аргументов!"
         )
 
+
 @app.post("/api/v1/management/web-health/request")
 async def request_make(
         theme: str = Body(...),
@@ -308,21 +394,20 @@ async def request_make(
         details: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
+    db.add(
+        TicketsDB(id=str(uuid.uuid4()), author_id=uid, ticket_status="ACTIVE",
+                  theme=theme,
+                  details=details, date_created=datetime.now(tz=timezone.utc), )
+    )
 
-        db.add(
-            TicketsDB(id=str(uuid.uuid4()), author_id=uid, ticket_status="ACTIVE",
-                      theme=theme,
-                      details=details, date_created=datetime.now(tz=timezone.utc),)
-        )
+    await db.commit()
 
-        await db.commit()
 
 @app.post("/api/v1/management/web-health/request-take")
 async def request_take(
         data: str = Form(...),
         db: AsyncSession = Depends(get_db),
 ):
-
     # Add nickname for admin identification to db (later)
     pass
 
@@ -347,12 +432,11 @@ async def requests_get(
 
 @app.post("/api/v1/management/web-health/request-c")
 async def requests_close(
-        request_id: str = Form(...),
+        req_id: str = Form(...),
         db: AsyncSession = Depends(get_db),
 
 ):
-
-    tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == request_id))
+    tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == req_id))
     ticket = tickets.scalar_one_or_none()
 
     if not ticket:
@@ -361,15 +445,16 @@ async def requests_close(
     await db.delete(ticket)
     await db.commit()
 
+
 @app.post("/api/v1/management/web-health/user-manipulate")
 async def user_manipulate(
-        request_id: str = Form(...),
+        request: Request,
+        req_id: str = Form(...),
         verdict: int = Form(...),
         db: AsyncSession = Depends(get_db),
 
 ):
-
-    if not request_id:
+    if not req_id:
         raise HTTPException(status_code=404, detail="NO_SUCH_REQUEST")
 
     tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == request_id))
@@ -392,17 +477,42 @@ async def user_manipulate(
         "verdict": verdict,
     }
 
-    res, res_status = await send_request("va", payload)
+    if verdict == 1:
+        logger.info(
+            f"User {ticket.author_id} was verified by admin", extra={
+                "ip": request.client.host,
+                "request_id": request_id,
+            }
+        )
+
+    if verdict == 0:
+        logger.info(
+            f"User {ticket.author_id} was rejected by admin", extra={
+                "ip": request.client.host,
+                "request_id": request_id,
+            }
+        )
+
+    res, res_status = await send_request("va", payload, request)
 
     if res_status != 200:
-            print(res)
-            raise HTTPException(
-                status_code=res_status,
-                detail=res.json().get("detail"),
-            )
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": res_status,
+                "ip": request.client.host,
+                "error": res.text[:500],
+                "request_id": request_id,
+            }
+        )
+        raise HTTPException(
+            status_code=res_status,
+            detail=res.json().get("detail"),
+        )
+
 
 @app.post("/api/v1/management/web-health/delete")
 async def delete_price_list(
+        request: Request,
         price_list_name: str = Form(...),
         db: AsyncSession = Depends(get_db),
 
@@ -424,11 +534,18 @@ async def delete_price_list(
         "price-list-name": str(price_list_name),
     }
 
-    res, res_status = await send_request("dp", payload)
+    res, res_status = await send_request("dp", payload, request)
 
     if res_status != 200:
-            print(res)
-            raise HTTPException(
-                status_code=res_status,
-                detail=res.json().get("detail"),
-            )
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": res_status,
+                "ip": request.client.host,
+                "error": res.text[:500],
+                "request_id": request_id,
+            }
+        )
+        raise HTTPException(
+            status_code=res_status,
+            detail=res.json().get("detail"),
+        )

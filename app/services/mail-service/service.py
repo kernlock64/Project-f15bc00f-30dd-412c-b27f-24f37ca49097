@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_mail import ConnectionConfig, MessageSchema, MessageType, FastMail, NameEmail
 from pathlib import Path
 from shared.exception_handler import *
+from shared.logger_middleware import *
+from shared.logger import *
 
 # conf = ConnectionConfig(
 #     MAIL_USERNAME="your_login@gmail.com",
@@ -48,6 +50,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
+app.middleware("http")(request_trace)
 
 async def get_db():
     factory = get_async_session()
@@ -56,6 +59,14 @@ async def get_db():
 
 
 async def send_email_async(subject: str, email_to: str, body: dict, template_name: str):
+
+    logger.info(
+        "Email has been successfully sent!", extra={
+            "subject": subject,
+            "email_to": email_to,
+            "request_id": request_id,
+        }
+    )
 
     message = MessageSchema(
         subject=subject,

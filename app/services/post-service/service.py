@@ -19,6 +19,8 @@ import asyncio
 from category_init import *
 import secrets
 from shared.exception_handler import *
+from shared.logger_middleware import *
+from shared.logger import *
 
 
 class RabbitMQGateway:
@@ -129,6 +131,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
+app.middleware("http")(request_trace)
 
 async def get_db():
     factory = app.state.db
@@ -155,7 +158,14 @@ async def delete_user(
                                       headers={"X-Key": MEDIA_KEY, "X-Directory": i})
 
             if res.status_code != 200:
-                print(res.text, res.status_code, )
+                logger.error(
+                    "External server error has occurred!", extra={
+                        "status_code": res.status_code,
+                        "user_id": uid,
+                        "error": res.text[:500],
+                        "request_id": request_id,
+                    }
+                )
                 raise HTTPException(
                     status_code=res.status_code,
                     detail=res.json().get("details"),
@@ -227,13 +237,28 @@ async def manipulate(
                                                   headers={"X-Key": MEDIA_KEY, "X-Directory": i})
 
                         if res.status_code != 200:
-                            print(res.text, res.status_code, )
+                            logger.error(
+                                "External server error has occurred!", extra={
+                                    "status_code": res.status_code,
+                                    "post_id": post_id,
+                                    "error": res.text[:500],
+                                    "request_id": request_id,
+                                }
+                            )
                             raise HTTPException(
                                 status_code=res.status_code,
                                 detail=res.json().get("details"),
                             )
 
                     await db.commit()
+
+                    logger.info(
+                        "Post has been successfully deleted!", extra={
+                            "post_id": post_id,
+                            "request_id": request_id,
+                        }
+                    )
+
                     return None
 
                 posts = await db.execute(select(PostDB).where(PostDB.id == str(post_id)))
@@ -250,7 +275,14 @@ async def manipulate(
                     headers={"X-Key": MEDIA_KEY, "X-Directory": post.directory_name})
 
                 if resp.status_code != 200:
-                    print(resp.text, resp.status_code)
+                    logger.error(
+                        "External server error has occurred!", extra={
+                            "status_code": resp.status_code,
+                            "post_id": post_id,
+                            "error": resp.text[:500],
+                            "request_id": request_id,
+                        }
+                    )
                     raise HTTPException(
                         status_code=resp.status_code,
                         detail=resp.json().get("details"),
@@ -259,6 +291,14 @@ async def manipulate(
                 await db.delete(post)
 
                 await db.commit()
+
+                logger.info(
+                    "Post has been successfully deleted!", extra={
+                        "post_id": post_id,
+                        "request_id": request_id,
+                    }
+                )
+
                 return None
 
             case "a":
@@ -274,7 +314,14 @@ async def manipulate(
 
                 req = await client.get(url, headers={"User-Id": uid, "Role": "2"})
                 if req.status_code != 200:
-                    print(req.text, req.status_code)
+                    logger.error(
+                        "External server error has occurred!", extra={
+                            "status_code": req.status_code,
+                            "user_id": uid,
+                            "error": req.text[:500],
+                            "request_id": request_id,
+                        }
+                    )
                     raise HTTPException(
                         status_code=req.status_code,
                         detail=req.json().get("details"),
@@ -322,6 +369,14 @@ async def manipulate(
 
                             await db.commit()
 
+                            logger.info(
+                                "Post has been successfully added!", extra={
+                                    "post_id": post_id,
+                                    "author_id": uid,
+                                    "request_id": request_id,
+                                }
+                            )
+
                             return None
 
                     elif metadata["is_images"] == "f":
@@ -355,6 +410,15 @@ async def manipulate(
                             ], primary_key="id")
 
                             await db.commit()
+
+                            logger.info(
+                                "Post has been successfully added!", extra={
+                                    "post_id": post_id,
+                                    "author_id": uid,
+                                    "request_id": request_id,
+                                }
+                            )
+
                             return None
 
                 except sqlalchemy.exc.IntegrityError:
@@ -391,6 +455,14 @@ async def manipulate(
                         )
                     setattr(post, key, value)
                 await db.commit()
+
+                logger.info(
+                    "Post has been successfully updated!", extra={
+                        "post_id": post_id,
+                        "request_id": request_id,
+                    }
+                )
+
                 return None
             case "g":
 
@@ -491,7 +563,15 @@ async def get_post(
                             headers=request.headers)
 
     if res1.status_code != 200:
-        print(res1.text, res1.status_code)
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": res1.status_code,
+                "post_id": post_id,
+                "error": res1.text[:500],
+                "request_id": request_id,
+            }
+        )
+
         raise HTTPException(
             status_code=res1.status_code,
             detail=res1.json().get("details"),
@@ -500,7 +580,14 @@ async def get_post(
     res2 = await client.get(f"http://user-service:5004/api/v1/users/producers/post/{post.author_id}")
 
     if res2.status_code != 200:
-        print(res2.text, res2.status_code)
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": res2.status_code,
+                "post_id": post_id,
+                "error": res2.text[:500],
+                "request_id": request_id,
+            }
+        )
         raise HTTPException(
             status_code=res2.status_code,
             detail=res2.json().get("details"),
@@ -571,6 +658,15 @@ async def changes_post(
         setattr(post, key, value)
 
     await db.commit()
+
+    logger.info(
+        "Post has been successfully updated!", extra={
+            "post_id": post_id,
+            "user_id": uid,
+            "request_id": request_id,
+        }
+    )
+
     return None
 
 
@@ -609,13 +705,29 @@ async def delete_post(
                                headers={"X-Key": MEDIA_KEY, "X-Directory": post.directory_name})
 
     if resp.status_code != 200:
-        print(resp.text, resp.status_code)
+        logger.error(
+            "External server error has occurred!", extra={
+                "status_code": resp.status_code,
+                "user_id": uid,
+                "error": resp.text[:500],
+                "request_id": request_id,
+            }
+        )
+
         raise HTTPException(
             status_code=resp.status_code,
             detail=resp.json().get("details"),
         )
 
     await db.delete(post)
+
+    logger.info(
+        "Post has been successfully deleted!", extra={
+            "post_id": post_id,
+            "user_id": uid,
+            "request_id": request_id,
+        }
+    )
 
     await db.commit()
 
@@ -648,11 +760,26 @@ async def report_post(
         req = await client.post("http://admin-service:5006/api/v1/management/web-health/request", json=metadata)
 
         if req.status_code != 200:
-            print(req.status_code, req.text)
+            logger.error(
+                "External server error has occurred!", extra={
+                    "status_code": req.status_code,
+                    "user_id": uid,
+                    "error": req.text[:500],
+                    "request_id": request_id,
+                }
+            )
             raise HTTPException(
                 status_code=req.status_code,
                 detail=req.json().get("details"),
             )
+
+        logger.info(
+            "User report has been successfully submitted!", extra={
+                "post_id": post_id,
+                "user_id": uid,
+                "request_id": request_id,
+            }
+        )
 
         return None
 

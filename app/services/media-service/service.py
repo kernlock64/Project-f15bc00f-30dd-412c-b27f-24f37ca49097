@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 import os
 from fastapi.middleware.cors import CORSMiddleware
 from shared.exception_handler import *
+from shared.logger_middleware import *
+from shared.logger import *
 
 MEDIA_KEY = os.getenv("MEDIA_KEY")
 
@@ -41,6 +43,7 @@ app.add_middleware(
 
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
+app.middleware("http")(request_trace)
 
 @app.get("/api/v1/media/get-image/{filename:path}")
 async def get_image(filename: str,
@@ -80,14 +83,19 @@ async def add_image(
 
         url = "http://filer:8888/" + name if not p_directory else "http://filer:8888/" + p_directory + "/" + name
 
-        print(url)
-
         await client.send(client.build_request(
             method="PUT",
             url=url,
             content=request.stream(),
             headers={"Content-Type": "application/octet-stream"}
         ))
+
+        logger.info(
+            "Image has been successfully uploaded!", extra={
+                "name": name,
+                "request_id": request_id,
+            }
+        )
 
         return {
             "filename": name,
@@ -119,6 +127,13 @@ async def delete_image(
             content=request.stream()
         ))
 
+        logger.info(
+            "Image has been successfully deleted!", extra={
+                "name": filename,
+                "request_id": request_id,
+            }
+        )
+
 @app.post("/api/v1/media/change-image/{filename}")
 async def change_image(
         filename: str,
@@ -138,4 +153,11 @@ async def change_image(
             content=request.stream(),
             headers={"Content-Type": "application/octet-stream"}
         ))
+
+        logger.info(
+            "Image has been successfully updated!", extra={
+                "name": filename,
+                "request_id": request_id,
+            }
+        )
 
