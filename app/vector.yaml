@@ -1,0 +1,61 @@
+sources:
+  docker_stdout:
+    type: "docker_logs"
+
+transforms:
+  parse_json_logs:
+    type: "remap"
+    inputs:
+      - "docker_stdout"
+    source: |
+      
+      parsed_res, err = parse_json(.message)
+      
+      if err != null {
+        abort
+      }
+      
+      .parsed = parsed_res
+      
+      .message = .parsed.message
+      .level = .parsed.levelname
+      .service_name = .parsed.name
+      .trace_id = .parsed.request_id
+      
+      .ids = compact({
+      
+      "user_id": del(.parsed.user_id),
+      "post_id": del(.parsed.post_id)
+      
+      })
+      
+      .details = compact({
+      "ip": del(.parsed.ip),
+      "related_id": .ids,
+      "status_code": del(.parsed.status_code),
+      "error": del(.parsed.error),
+      "subject": del(.parsed.subject),
+      "email_to": del(.parsed.email_to)
+      })
+      
+      del(.parsed)
+
+sinks:
+  clickhouse_backend:
+    type: "clickhouse"
+    inputs:
+      - "parse_json_logs"
+    endpoint: "http://clickhouse:8123"
+    database: "logging"
+    table: "app_logs"
+    skip_unknown_fields: true
+    auth:
+      strategy: "basic"
+      user: "default"
+      password: "123"
+    batch:
+      max_bytes: 1024
+      timeout_secs: 1
+    buffer:
+      type: "disk"
+      max_size: 2147483648

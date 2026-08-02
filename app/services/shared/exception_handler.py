@@ -10,21 +10,22 @@ async def universal_server_http_error_handler(req: Request, exc: StarletteExcept
     logger.warn(
         f"Some client-side error has occurred on method {req.method} {req.url.path}", extra={
             "exception": exc.detail,
-            "request_id": request_id,
+            "request_id": request_id.get(),
         }
     )
 
     return JSONResponse(
         status_code=exc.status_code,
         content={
-            "detail": exc.detail, }
+            "detail": exc.detail,
+        }
     )
 
 async def universal_server_error_handler(req: Request, exc: Exception):
     logger.error(
         f"Some sever-side error has occurred on method {req.method} {req.url.path}", extra={
             "exception": exc,
-            "request_id": request_id,
+            "request_id": request_id.get(),
         }, exc_info=True
     )
 

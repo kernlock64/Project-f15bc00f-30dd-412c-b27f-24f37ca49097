@@ -128,7 +128,7 @@ async def delete_user(
                     "status_code": resp.status_code,
                     "user_id": uid,
                     "error": resp.text[:500],
-                    "request_id": request_id,
+                    "request_id": request_id.get(),
                 }
             )
 
@@ -233,7 +233,7 @@ async def manipulate(
                 logger.info(
                     "Userdata was successfully updated!", extra={
                         "user_id": user_id,
-                        "request_id": request_id,
+                        "request_id": request_id.get(),
                     }
                 )
 
@@ -254,7 +254,7 @@ async def manipulate(
                             "status_code": res1.status_code,
                             "user_id": uid,
                             "error": res1.text[:500],
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                         }
                     )
                     raise HTTPException(
@@ -306,7 +306,7 @@ async def manipulate(
                                 "status_code": res2.status_code,
                                 "user_id": uid,
                                 "error": res2.text[:500],
-                                "request_id": request_id,
+                                "request_id": request_id.get(),
                             }
                         )
 
@@ -399,7 +399,7 @@ async def get_user(
                 "status_code": res1.status_code,
                 "user_id": uid,
                 "error": res1.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
 
@@ -473,7 +473,7 @@ async def get_user_prod(
                 "status_code": res.status_code,
                 "user_id": uid,
                 "error": res.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
@@ -564,7 +564,7 @@ async def add_user(
                 "status_code": resp.status_code,
                 "user_id": uid,
                 "error": resp.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
 
@@ -586,7 +586,7 @@ async def add_user(
         logger.info(
             "User profile was successfully created!", extra={
                 "user_id": uid,
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
 
@@ -618,7 +618,7 @@ async def change_userdata(
     logger.info(
         "Userdata was successfully updated!", extra={
             "user_id": uid,
-            "request_id": request_id,
+            "request_id": request_id.get(),
         }
     )
 
@@ -657,7 +657,7 @@ async def change_avatar(
                 "status_code": resp.status_code,
                 "user_id": uid,
                 "error": resp.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
@@ -668,7 +668,7 @@ async def change_avatar(
     logger.info(
         "Userdata was successfully updated!", extra={
             "user_id": uid,
-            "request_id": request_id,
+            "request_id": request_id.get(),
         }
     )
 
@@ -703,7 +703,7 @@ async def report(
                 "status_code": resp.status_code,
                 "user_id": uid,
                 "error": resp.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
 
@@ -715,7 +715,7 @@ async def report(
     logger.info(
         "User request was successfully submitted!", extra={
             "user_id": uid,
-            "request_id": request_id,
+            "request_id": request_id.get(),
         }
     )
 

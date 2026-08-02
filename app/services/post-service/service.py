@@ -163,7 +163,7 @@ async def delete_user(
                         "status_code": res.status_code,
                         "user_id": uid,
                         "error": res.text[:500],
-                        "request_id": request_id,
+                        "request_id": request_id.get(),
                     }
                 )
                 raise HTTPException(
@@ -242,7 +242,7 @@ async def manipulate(
                                     "status_code": res.status_code,
                                     "post_id": post_id,
                                     "error": res.text[:500],
-                                    "request_id": request_id,
+                                    "request_id": request_id.get(),
                                 }
                             )
                             raise HTTPException(
@@ -255,7 +255,7 @@ async def manipulate(
                     logger.info(
                         "Post has been successfully deleted!", extra={
                             "post_id": post_id,
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                         }
                     )
 
@@ -280,7 +280,7 @@ async def manipulate(
                             "status_code": resp.status_code,
                             "post_id": post_id,
                             "error": resp.text[:500],
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                         }
                     )
                     raise HTTPException(
@@ -295,7 +295,7 @@ async def manipulate(
                 logger.info(
                     "Post has been successfully deleted!", extra={
                         "post_id": post_id,
-                        "request_id": request_id,
+                        "request_id": request_id.get(),
                     }
                 )
 
@@ -319,7 +319,7 @@ async def manipulate(
                             "status_code": req.status_code,
                             "user_id": uid,
                             "error": req.text[:500],
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                         }
                     )
                     raise HTTPException(
@@ -373,7 +373,7 @@ async def manipulate(
                                 "Post has been successfully added!", extra={
                                     "post_id": post_id,
                                     "author_id": uid,
-                                    "request_id": request_id,
+                                    "request_id": request_id.get(),
                                 }
                             )
 
@@ -415,7 +415,7 @@ async def manipulate(
                                 "Post has been successfully added!", extra={
                                     "post_id": post_id,
                                     "author_id": uid,
-                                    "request_id": request_id,
+                                    "request_id": request_id.get(),
                                 }
                             )
 
@@ -459,7 +459,7 @@ async def manipulate(
                 logger.info(
                     "Post has been successfully updated!", extra={
                         "post_id": post_id,
-                        "request_id": request_id,
+                        "request_id": request_id.get(),
                     }
                 )
 
@@ -568,7 +568,7 @@ async def get_post(
                 "status_code": res1.status_code,
                 "post_id": post_id,
                 "error": res1.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
 
@@ -585,7 +585,7 @@ async def get_post(
                 "status_code": res2.status_code,
                 "post_id": post_id,
                 "error": res2.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
@@ -663,7 +663,7 @@ async def changes_post(
         "Post has been successfully updated!", extra={
             "post_id": post_id,
             "user_id": uid,
-            "request_id": request_id,
+            "request_id": request_id.get(),
         }
     )
 
@@ -710,7 +710,7 @@ async def delete_post(
                 "status_code": resp.status_code,
                 "user_id": uid,
                 "error": resp.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
 
@@ -725,7 +725,7 @@ async def delete_post(
         "Post has been successfully deleted!", extra={
             "post_id": post_id,
             "user_id": uid,
-            "request_id": request_id,
+            "request_id": request_id.get(),
         }
     )
 
@@ -765,7 +765,7 @@ async def report_post(
                     "status_code": req.status_code,
                     "user_id": uid,
                     "error": req.text[:500],
-                    "request_id": request_id,
+                    "request_id": request_id.get(),
                 }
             )
             raise HTTPException(
@@ -777,7 +777,7 @@ async def report_post(
             "User report has been successfully submitted!", extra={
                 "post_id": post_id,
                 "user_id": uid,
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
 

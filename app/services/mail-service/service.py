@@ -64,7 +64,7 @@ async def send_email_async(subject: str, email_to: str, body: dict, template_nam
         "Email has been successfully sent!", extra={
             "subject": subject,
             "email_to": email_to,
-            "request_id": request_id,
+            "request_id": request_id.get(),
         }
     )
 

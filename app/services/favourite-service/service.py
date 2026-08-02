@@ -217,7 +217,7 @@ async def add_favourite(
                         "status_code": resp.status_code,
                         "post_id": post_id,
                         "error": resp.text[:500],
-                        "request_id": request_id,
+                        "request_id": request_id.get(),
                     }
                 )
 
@@ -239,7 +239,7 @@ async def add_favourite(
                 "Favourites mark has been successfully added!", extra={
                     "post_id": post_id,
                     "user_id": user_id,
-                    "request_id": request_id,
+                    "request_id": request_id.get(),
                 }
             )
 
@@ -254,7 +254,7 @@ async def add_favourite(
                 "Favourites mark has been successfully added!", extra={
                     "post_id": post_id,
                     "user_id": user_id,
-                    "request_id": request_id,
+                    "request_id": request_id.get(),
                 }
             )
 
@@ -271,6 +271,6 @@ async def delete_favourite(
             "Favourites mark has been successfully deleted!", extra={
                 "post_id": post_id,
                 "user_id": user_id,
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )

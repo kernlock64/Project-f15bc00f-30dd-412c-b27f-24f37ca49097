@@ -65,6 +65,7 @@ services:
     volumes:
       - ch_data:/var/lib/clickhouse
       - ./initial.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    restart: always
 
   filer:
     image: chrislusf/seaweedfs
@@ -89,7 +90,7 @@ services:
     restart: always
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U admin -d init_db" ]
-      interval: 5s
+      interval: 15s
       timeout: 5s
       retries: 5
     expose:
@@ -122,6 +123,11 @@ services:
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "check_port_connectivity" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     environment:
       RABBITMQ_DEFAULT_USER: "admin"
       RABBITMQ_DEFAULT_PASS: "${DB_PASSWORD}"
@@ -183,6 +189,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: always
 
   favourite-service:
@@ -210,6 +218,8 @@ services:
       - ./services/shared:/service/shared
     depends_on:
       db:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: always
 
@@ -242,6 +252,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: always
 
   mail-service:
@@ -269,6 +281,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: always
 
   media-service:
@@ -290,6 +304,9 @@ services:
       - "SERVICE_NAME='media_service'"
       - "MEDIA_KEY=${MEDIA_KEY}"
       - "SUB=${MEDIA_SUB}"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     restart: always
 
   post-service:
@@ -321,6 +338,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: always
 
   user-service:
@@ -349,6 +368,8 @@ services:
       - ./services/shared:/service/shared
     depends_on:
       db:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: always
 

@@ -177,7 +177,7 @@ async def user_check(uid, eng):
 
             logger.info(
                 f"User has been deleted after period of inactivity!", extra={
-                    "request_id": request_id,
+                    "request_id": request_id.get(),
                     "user_id": uid,
                 }
             )
@@ -227,9 +227,7 @@ ROUTES_NA = {
 async def proxy(request: Request, call_next):
 
     logger.info(
-        f"Request from {request.client.host} to {request.url.path}", extra={
-            "request_id": request_id,
-        }
+        f"Request from {request.client.host} to {request.url.path}"
     )
 
     if request.url.path in {"/api/v1/registration", "/api/v1/login", "/api/v1/refresh", "/api/v1/forgot-password",
@@ -395,7 +393,7 @@ async def user_confirm(
 
     logger.info(
         f"User status has been switched from PENDING to {user.status}", extra={
-            "request_id": request_id,
+            "request_id": request_id.get(),
             "user_id": uid,
         }
     )
@@ -422,7 +420,7 @@ async def user_confirm(
                     "status_code": resp.status_code,
                     "user_id": uid,
                     "error": resp.text[:500],
-                    "request_id": request_id,
+                    "request_id": request_id.get(),
                 }
             )
             raise HTTPException(
@@ -459,7 +457,7 @@ async def user_confirm(
                 "status_code": req1.status_code,
                 "user_id": uid,
                 "error": req1.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
@@ -481,7 +479,7 @@ async def user_confirm(
                     "status_code": req2.status_code,
                     "user_id": uid,
                     "error": req2.text[:500],
-                    "request_id": request_id,
+                    "request_id": request_id.get(),
                 }
             )
 
@@ -590,7 +588,7 @@ async def manipulate(
                                 "status_code": req.status_code,
                                 "user_id": user_id,
                                 "error": req.text[:500],
-                                "request_id": request_id,
+                                "request_id": request_id.get(),
                             }
                         )
                         raise HTTPException(
@@ -600,7 +598,7 @@ async def manipulate(
 
                     logger.info(
                         f"User status has been switched from VERIFIED to ACTIVE", extra={
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                             "user_id": user_id,
                         }
                     )
@@ -627,7 +625,7 @@ async def manipulate(
                                 "status_code": req.status_code,
                                 "user_id": user_id,
                                 "error": req.text[:500],
-                                "request_id": request_id,
+                                "request_id": request_id.get(),
                             }
                         )
                         raise HTTPException(
@@ -637,7 +635,7 @@ async def manipulate(
 
                     logger.info(
                         f"User status has been switched from VERIFIED to REJECTED", extra={
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                             "user_id": user_id,
                         }
                     )
@@ -682,7 +680,7 @@ async def manipulate(
                             "status_code": resp.status_code,
                             "user_id": uid,
                             "error": resp.text[:500],
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                         }
                     )
                     raise HTTPException(
@@ -698,7 +696,7 @@ async def manipulate(
 
                 logger.info(
                     f"User was successfully deleted!", extra={
-                        "request_id": request_id,
+                        "request_id": request_id.get(),
                         "user_id": uid,
                     }
                 )
@@ -753,7 +751,7 @@ async def forgot_password(
                     "status_code": req.status_code,
                     "ip": request.client.host,
                     "error": req.text[:500],
-                    "request_id": request_id,
+                    "request_id": request_id.get(),
                 }
             )
 
@@ -764,7 +762,7 @@ async def forgot_password(
 
         logger.info(
             f"Forgot password token has been issued!", extra={
-                "request_id": request_id,
+                "request_id": request_id.get(),
                 "ip": request.client.host,
             }
         )
@@ -803,7 +801,7 @@ async def logout(
 
     logger.info(
         f"User logout", extra={
-            "request_id": request_id,
+            "request_id": request_id.get(),
             "user_id": uid,
         }
     )
@@ -898,7 +896,7 @@ async def registration(
                 "status_code": req.status_code,
                 "user_id": uid,
                 "error": req.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
@@ -911,7 +909,7 @@ async def registration(
 
     logger.info(
         f"User initial profile was created", extra={
-            "request_id": request_id,
+            "request_id": request_id.get(),
             "user_id": uid,
         }
     )
@@ -965,7 +963,7 @@ async def delete(
                 "status_code": resp.status_code,
                 "user_id": uid,
                 "error": resp.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
@@ -980,7 +978,7 @@ async def delete(
 
     logger.info(
         f"User has been deleted!", extra={
-            "request_id": request_id,
+            "request_id": request_id.get(),
             "user_id": uid,
         }
     )
@@ -1037,7 +1035,7 @@ async def login(
 
                 logger.info(
                     f"User profile was deleted because of verdict", extra={
-                        "request_id": request_id,
+                        "request_id": request_id.get(),
                         "user_id": uid,
                     }
                 )
@@ -1112,7 +1110,7 @@ async def change_password(
                     "status_code": resp.status_code,
                     "user_id": uid,
                     "error": resp.text[:500],
-                    "request_id": request_id,
+                    "request_id": request_id.get(),
                 }
             )
             raise HTTPException(
@@ -1124,7 +1122,7 @@ async def change_password(
 
         logger.info(
             f"User password was changed", extra={
-                "request_id": request_id,
+                "request_id": request_id.get(),
                 "user_id": uid,
             }
         )
@@ -1160,7 +1158,7 @@ async def change_email(
 
         logger.info(
             f"User email was changed", extra={
-                "request_id": request_id,
+                "request_id": request_id.get(),
                 "user_id": uid,
             }
         )
@@ -1226,7 +1224,7 @@ async def refresh(
                         "status_code": resp.status_code,
                         "user_id": uid,
                         "error": resp.text[:500],
-                        "request_id": request_id,
+                        "request_id": request_id.get(),
                     }
                 )
 

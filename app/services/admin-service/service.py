@@ -119,7 +119,7 @@ async def send_request(
     logger.info(
         f"Admin request to {dest_url[dest[1]]} was created", extra={
             "ip": request.client.host,
-            "request_id": request_id,
+            "request_id": request_id.get(),
         }
     )
 
@@ -169,7 +169,7 @@ async def add_price_list(
                 "data": data,
                 "ip": request.client.host,
                 "error": e,
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         os.remove(f"temp/{name}.zip")
@@ -188,7 +188,7 @@ async def add_price_list(
                 "status_code": res_status,
                 "ip": request.client.host,
                 "error": res.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
@@ -214,7 +214,7 @@ async def get_post(
                 "status_code": res_status,
                 "ip": request.client.host,
                 "error": res.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
@@ -241,7 +241,7 @@ async def get_posts(
                 "status_code": res_status,
                 "ip": request.client.host,
                 "error": res.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
 
@@ -267,7 +267,7 @@ async def get_user(
                 "status_code": res_status,
                 "ip": request.client.host,
                 "error": res.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
@@ -305,7 +305,7 @@ async def manipulate(
                             "status_code": res_status,
                             "ip": request.client.host,
                             "error": res.text[:500],
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                         }
                     )
                     raise HTTPException(
@@ -326,7 +326,7 @@ async def manipulate(
                             "status_code": res_status,
                             "ip": request.client.host,
                             "error": res.text[:500],
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                         }
                     )
                     raise HTTPException(
@@ -351,7 +351,7 @@ async def manipulate(
                             "status_code": res_status,
                             "ip": request.client.host,
                             "error": res.text[:500],
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                         }
                     )
                     raise HTTPException(
@@ -372,7 +372,7 @@ async def manipulate(
                             "status_code": res_status,
                             "ip": request.client.host,
                             "error": res.text[:500],
-                            "request_id": request_id,
+                            "request_id": request_id.get(),
                         }
                     )
                     raise HTTPException(
@@ -457,7 +457,7 @@ async def user_manipulate(
     if not req_id:
         raise HTTPException(status_code=404, detail="NO_SUCH_REQUEST")
 
-    tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == request_id))
+    tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == request_id.get()))
     ticket = tickets.scalar_one_or_none()
 
     if not ticket:
@@ -481,7 +481,7 @@ async def user_manipulate(
         logger.info(
             f"User {ticket.author_id} was verified by admin", extra={
                 "ip": request.client.host,
-                "request_id": request_id,
+                "request_id": request_id.get().get(),
             }
         )
 
@@ -489,7 +489,7 @@ async def user_manipulate(
         logger.info(
             f"User {ticket.author_id} was rejected by admin", extra={
                 "ip": request.client.host,
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
 
@@ -501,7 +501,7 @@ async def user_manipulate(
                 "status_code": res_status,
                 "ip": request.client.host,
                 "error": res.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
@@ -542,7 +542,7 @@ async def delete_price_list(
                 "status_code": res_status,
                 "ip": request.client.host,
                 "error": res.text[:500],
-                "request_id": request_id,
+                "request_id": request_id.get(),
             }
         )
         raise HTTPException(
