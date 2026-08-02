@@ -2,7 +2,6 @@ import zipfile
 import csv
 import uuid
 from service import get_httpx
-from fastapi import Response
 import os
 from watermark import *
 from categories_cache import *
