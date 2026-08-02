@@ -5,8 +5,8 @@ from starlette.exceptions import HTTPException as StarletteException
 from shared.logger import logger
 from shared.logger_middleware import request_id
 
-async def universal_server_http_error_handler(req: Request, exc: StarletteException):
 
+async def universal_server_http_error_handler(req: Request, exc: StarletteException):
     logger.warn(
         f"Some client-side error has occurred on method {req.method} {req.url.path}", extra={
             "exception": exc.detail,
@@ -20,6 +20,7 @@ async def universal_server_http_error_handler(req: Request, exc: StarletteExcept
             "detail": exc.detail,
         }
     )
+
 
 async def universal_server_error_handler(req: Request, exc: Exception):
     logger.error(

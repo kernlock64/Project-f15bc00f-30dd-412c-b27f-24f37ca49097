@@ -37,6 +37,7 @@ conf = ConnectionConfig(
     TEMPLATE_FOLDER=Path(__file__).parent / 'templates'
 )
 
+
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
     factory = get_async_session()
@@ -46,11 +47,13 @@ async def lifespan(cl: FastAPI):
     finally:
         await engine.dispose()
 
+
 app = FastAPI(lifespan=lifespan)
 
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
 app.middleware("http")(request_trace)
+
 
 async def get_db():
     factory = get_async_session()
@@ -59,7 +62,6 @@ async def get_db():
 
 
 async def send_email_async(subject: str, email_to: str, body: dict, template_name: str):
-
     logger.info(
         "Email has been successfully sent!", extra={
             "subject": subject,
@@ -73,17 +75,15 @@ async def send_email_async(subject: str, email_to: str, body: dict, template_nam
         recipients=[NameEmail(email=email_to, name=body['username'])],
         template_body=body,
         subtype=MessageType.html,
-        attachments = [
-        {
-            "file": "static/images/logo.jpeg",
-            "headers": {"Content-ID": "<logo_image>",
-                        "Content-Disposition": "inline"},
-            "mime_type": "image",
-            "mime_subtype": "jpeg"
-        }
-    ])
-
-
+        attachments=[
+            {
+                "file": "static/images/logo.jpeg",
+                "headers": {"Content-ID": "<logo_image>",
+                            "Content-Disposition": "inline"},
+                "mime_type": "image",
+                "mime_subtype": "jpeg"
+            }
+        ])
 
     fm = FastMail(conf)
     await fm.send_message(message, template_name=template_name)
@@ -95,7 +95,6 @@ async def password_change(
         data: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
-
     email_to = data["email_to"]
 
     if not email_to:
@@ -104,12 +103,12 @@ async def password_change(
             detail="No receiver!",
         )
 
-    mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc), theme="password-change")
+    mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc),
+                  theme="password-change")
     db.add(mail)
     await db.commit()
 
     background_tasks.add_task(send_email_async, "Смена пароля", email_to, data, "on-password-change.html")
-
 
 
 @app.post("/api/v1/mail/on-password-forget")
@@ -118,7 +117,6 @@ async def password_forget(
         data: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
-
     email_to = data["email_to"]
 
     if not email_to:
@@ -133,12 +131,12 @@ async def password_forget(
 
     '''FAKE-URL!'''
 
-    mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc), theme="password-forget")
+    mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc),
+                  theme="password-forget")
     db.add(mail)
     await db.commit()
 
     background_tasks.add_task(send_email_async, "Сброс пароля", email_to, data, "on-password-forget.html")
-
 
 
 @app.post("/api/v1/mail/on-suspicious-activity")
@@ -147,7 +145,6 @@ async def suspicious_activity(
         data: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
-
     email_to = data["email_to"]
 
     if not email_to:
@@ -165,14 +162,12 @@ async def suspicious_activity(
                               "on-suspicious-activity.html")
 
 
-
 @app.post("/api/v1/mail/on-requesting-provider")
 async def requesting_provider(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
-
     email_to = data["email_to"]
 
     if not email_to:
@@ -195,7 +190,6 @@ async def registration_accept_provider(
         data: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
-
     email_to = data["email_to"]
 
     if not email_to:
@@ -211,13 +205,13 @@ async def registration_accept_provider(
 
     background_tasks.add_task(send_email_async, "Заявка одобрена", email_to, data, "on-acceptance-provider.html")
 
+
 @app.post("/api/v1/mail/on-deny-provider")
 async def registration_deny_provider(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
-
     email_to = data["email_to"]
 
     if not email_to:
@@ -240,7 +234,6 @@ async def on_confirming_mail(
         data: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
-
     email_to = data["email_to"]
 
     if not email_to:
@@ -255,12 +248,12 @@ async def on_confirming_mail(
 
     '''FAKE-URL!'''
 
-    mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc), theme="account-confirmation")
+    mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc),
+                  theme="account-confirmation")
     db.add(mail)
     await db.commit()
 
     background_tasks.add_task(send_email_async, "Подтверждение регистрации", email_to, data, "on-confirmation.html")
-
 
 
 @app.post("/api/v1/mail/on-deletion")
@@ -269,7 +262,6 @@ async def account_deletion(
         data: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
-
     email_to = data["email_to"]
 
     if not email_to:
@@ -285,14 +277,12 @@ async def account_deletion(
     background_tasks.add_task(send_email_async, "Удаление аккаунта", email_to, data, "on-deletion.html")
 
 
-
 @app.post("/api/v1/mail/on-registration")
 async def registration(
         background_tasks: BackgroundTasks,
         data: dict = Body(...),
         db: AsyncSession = Depends(get_db),
 ):
-
     email_to = data["email_to"]
 
     if not email_to:
@@ -301,9 +291,9 @@ async def registration(
             detail="No receiver!",
         )
 
-    mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc), theme="registration")
+    mail = MailDB(id=str(uuid.uuid4()), receiver_email=email_to, date=datetime.now(tz=timezone.utc),
+                  theme="registration")
     db.add(mail)
     await db.commit()
 
     background_tasks.add_task(send_email_async, "Регистрация", email_to, data, "on-registration.html")
-
