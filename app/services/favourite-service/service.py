@@ -2,9 +2,7 @@ from fastapi import FastAPI, Depends
 from fastapi.exceptions import HTTPException
 import httpx
 from sqlalchemy import *
-import uuid
 import json
-import os
 
 from httpx import Limits, AsyncClient
 from db_init import get_async_session, engine

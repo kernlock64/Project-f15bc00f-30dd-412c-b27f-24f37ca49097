@@ -3,7 +3,6 @@ import httpx
 from starlette.responses import StreamingResponse
 from httpx import Limits, AsyncClient
 from contextlib import asynccontextmanager
-import os
 from fastapi.middleware.cors import CORSMiddleware
 from shared.exception_handler import *
 from shared.logger_middleware import *

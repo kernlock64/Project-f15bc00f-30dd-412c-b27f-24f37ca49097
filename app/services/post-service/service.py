@@ -1,4 +1,3 @@
-import os
 import json
 import sqlalchemy
 from geoalchemy2 import WKTElement

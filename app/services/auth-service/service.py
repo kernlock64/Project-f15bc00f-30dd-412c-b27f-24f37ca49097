@@ -1,4 +1,3 @@
-import uuid
 import json
 from fastapi import FastAPI, Depends, Request, Response, Form, status, BackgroundTasks, Body, HTTPException
 from phonenumbers import NumberParseException

@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Body
 from sqlalchemy import *
-import uuid
 from datetime import datetime, timezone
 
 from db_init import get_async_session, engine

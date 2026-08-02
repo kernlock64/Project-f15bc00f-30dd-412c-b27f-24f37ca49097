@@ -1,5 +1,3 @@
-import os
-import uuid
 from contextlib import asynccontextmanager
 from datetime import *
 from fastapi.middleware.cors import CORSMiddleware
