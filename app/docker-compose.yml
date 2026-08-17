@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   master:
@@ -12,17 +10,6 @@ services:
       - seaweed
     command: 'master -ip=master -ip.bind=0.0.0.0 -metricsPort=9324'
     restart: always
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    restart: always
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
-    networks:
-      - internal
 
   volume:
     image: chrislusf/seaweedfs

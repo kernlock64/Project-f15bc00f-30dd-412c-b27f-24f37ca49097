@@ -5,7 +5,7 @@ from meilisearch_python_sdk import AsyncClient as MeiliClient
 from meilisearch_python_sdk.models.settings import MeilisearchSettings
 
 from datetime import *
-from fastapi import FastAPI, Depends, Request, Body, HTTPException, Form
+from fastapi import FastAPI, Depends, Body, HTTPException, Form
 import httpx
 from sqlalchemy import *
 from httpx import Limits, AsyncClient
@@ -801,6 +801,8 @@ async def get_posts(
 
     if not path:
         cat = [i for i in CATEGORIES_CACHE.values() if not i["parent_id"]]
+        for k in cat:
+            k["subcategory"] = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == k["id"]]
         return {
             "categories": cat,
         }
