@@ -230,6 +230,11 @@ async def proxy(request: Request, call_next):
         f"Request from {request.client.host} to {request.url.path}"
     )
 
+    headers = MutableHeaders(scope=request.scope)
+    headers['X-Real-Ip'] = str(request.client.host)
+    if hasattr(request, "_headers"):
+        delattr(request, "_headers")
+
     if request.url.path in {"/api/v1/registration", "/api/v1/login", "/api/v1/refresh", "/api/v1/forgot-password",
                             "/api/v1/user-confirm"}:
         return await call_next(request)
@@ -489,11 +494,8 @@ async def user_confirm(
             )
 
 
-async def check_data(password, email, username, session: AsyncSession):
+async def check_data(password, email, session: AsyncSession):
     check_flag = True
-
-    if len(password) > 64:
-        return {"status": "False", "message": "MAX_LEN_64"}
 
     res = checker.zxcvbn(password)
 
@@ -506,16 +508,6 @@ async def check_data(password, email, username, session: AsyncSession):
     result = await session.execute(select(exists().where(AuthDB.email == email)))
     if result.scalar():
         return {"status": "False", "message": "USER_EXIST"}
-
-    if 3 > len(username):
-        return {"status": "False", "message": "INVALID_USERNAME"}
-
-    if len(username) > 15:
-        return {"status": "False", "message": "INVALID_USERNAME"}
-
-    if ' ' in username or any([i in '!@#$%^&*()_+=-' for i in username]):
-        return {"status": "False",
-                "message": "INVALID_USERNAME"}
 
     try:
         validate_email(email, check_deliverability=True)
@@ -780,7 +772,7 @@ async def logout(
 
     if not uid:
         raise HTTPException(
-            status_code=400,
+            status_code=404,
             detail="NO_UID",
         )
 
@@ -812,14 +804,33 @@ async def logout(
 
 @app.post("/api/v1/registration")
 async def registration(
+        request: Request,
         session: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
-        username: str = Form(...),
+        username: str = Form(
+            ...,
+            min_length=3,
+            max_length=20,
+            pattern=r"^[a-zA-Z0-9_-]+$",
+            description="От 3 до 20 символов: буквы, цифры, или символы _ или -"
+        ),
         role: int = Form(...),
-        password: str = Form(...),
+        password: str = Form(
+            ...,
+            min_length=5,
+            max_length=64,
+            pattern=r"^[A-Za-z\d@$!%*?&\-_.\#]+$",
+            description="Пароль должен состоять из латинских букв и спец.символов, не менее 5 символов и не более 64 символов"
+        ),
         email: str = Form(...),
         telephone: str = Form(None),
 ):
+    if role == 1:
+        raise HTTPException(
+            status_code=503,
+            detail="Ведутся технические работы. Пожалуйста, попробуйте позже."
+        )
+
     if not telephone and role == 2:
         raise HTTPException(
             status_code=400,
@@ -845,7 +856,7 @@ async def registration(
             )
 
     hashed_password = await password_hash(password)
-    check = await check_data(password, email, username, session=session)
+    check = await check_data(password, email, session=session)
 
     if check["status"] == "False":
         raise HTTPException(
