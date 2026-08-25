@@ -15,6 +15,7 @@ from model import TicketsDB, PriceListsDB
 from shared.exception_handler import *
 from shared.logger_middleware import *
 from shared.logger import *
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 limits = Limits(
     max_connections=1000,
@@ -66,7 +67,7 @@ async def get_db():
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
 app.middleware("http")(request_trace)
-
+app.add_middleware(ProxyHeadersMiddleware, trusted_proxies=["*"])
 
 async def send_request(
         dest: str,
@@ -116,7 +117,7 @@ async def send_request(
 
     logger.info(
         f"Admin request to {dest_url[dest[1]]} was created", extra={
-            "ip": request.client.host,
+            "ip": request.headers.get("X-Real-IP"),
             "request_id": request_id.get(),
         }
     )
@@ -165,7 +166,7 @@ async def add_price_list(
         logger.error(
             "Error in proceeding data!", extra={
                 "data": data,
-                "ip": request.client.host,
+                "ip": request.headers.get("X-Real-IP"),
                 "error": e,
                 "request_id": request_id.get(),
             }
@@ -184,7 +185,7 @@ async def add_price_list(
         logger.error(
             "External server error has occurred!", extra={
                 "status_code": res_status,
-                "ip": request.client.host,
+                "ip": request.headers.get("X-Real-IP"),
                 "error": res.text[:500],
                 "request_id": request_id.get(),
             }
@@ -210,7 +211,7 @@ async def get_post(
         logger.error(
             "External server error has occurred!", extra={
                 "status_code": res_status,
-                "ip": request.client.host,
+                "ip": request.headers.get("X-Real-IP"),
                 "error": res.text[:500],
                 "request_id": request_id.get(),
             }
@@ -237,7 +238,7 @@ async def get_posts(
         logger.error(
             "External server error has occurred!", extra={
                 "status_code": res_status,
-                "ip": request.client.host,
+                "ip": request.headers.get("X-Real-IP"),
                 "error": res.text[:500],
                 "request_id": request_id.get(),
             }
@@ -263,7 +264,7 @@ async def get_user(
         logger.error(
             "External server error has occurred!", extra={
                 "status_code": res_status,
-                "ip": request.client.host,
+                "ip": request.headers.get("X-Real-IP"),
                 "error": res.text[:500],
                 "request_id": request_id.get(),
             }
@@ -301,7 +302,7 @@ async def manipulate(
                     logger.error(
                         "External server error has occurred!", extra={
                             "status_code": res_status,
-                            "ip": request.client.host,
+                            "ip": request.headers.get("X-Real-IP"),
                             "error": res.text[:500],
                             "request_id": request_id.get(),
                         }
@@ -322,7 +323,7 @@ async def manipulate(
                     logger.error(
                         "External server error has occurred!", extra={
                             "status_code": res_status,
-                            "ip": request.client.host,
+                            "ip": request.headers.get("X-Real-IP"),
                             "error": res.text[:500],
                             "request_id": request_id.get(),
                         }
@@ -347,7 +348,7 @@ async def manipulate(
                     logger.error(
                         "External server error has occurred!", extra={
                             "status_code": res_status,
-                            "ip": request.client.host,
+                            "ip": request.headers.get("X-Real-IP"),
                             "error": res.text[:500],
                             "request_id": request_id.get(),
                         }
@@ -368,7 +369,7 @@ async def manipulate(
                     logger.error(
                         "External server error has occurred!", extra={
                             "status_code": res_status,
-                            "ip": request.client.host,
+                            "ip": request.headers.get("X-Real-IP"),
                             "error": res.text[:500],
                             "request_id": request_id.get(),
                         }
@@ -478,7 +479,7 @@ async def user_manipulate(
     if verdict == 1:
         logger.info(
             f"User {ticket.author_id} was verified by admin", extra={
-                "ip": request.client.host,
+                "ip": request.headers.get("X-Real-IP"),
                 "request_id": request_id.get().get(),
             }
         )
@@ -486,7 +487,7 @@ async def user_manipulate(
     if verdict == 0:
         logger.info(
             f"User {ticket.author_id} was rejected by admin", extra={
-                "ip": request.client.host,
+                "ip": request.headers.get("X-Real-IP"),
                 "request_id": request_id.get(),
             }
         )
@@ -497,7 +498,7 @@ async def user_manipulate(
         logger.error(
             "External server error has occurred!", extra={
                 "status_code": res_status,
-                "ip": request.client.host,
+                "ip": request.headers.get("X-Real-IP"),
                 "error": res.text[:500],
                 "request_id": request_id.get(),
             }
@@ -538,7 +539,7 @@ async def delete_price_list(
         logger.error(
             "External server error has occurred!", extra={
                 "status_code": res_status,
-                "ip": request.client.host,
+                "ip": request.headers.get("X-Real-IP"),
                 "error": res.text[:500],
                 "request_id": request_id.get(),
             }

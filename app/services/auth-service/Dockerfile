@@ -13,4 +13,4 @@ RUN chmod +x ./entrypoint.sh
 
 ENTRYPOINT ["/service/entrypoint.sh"]
 
-CMD ["sh", "-c", "uvicorn service:app --host 0.0.0.0 --port $SERVICE_PORT"]
+CMD ["sh", "-c", "uvicorn service:app --host 0.0.0.0 --port $SERVICE_PORT --proxy-headers --forwarded-allow-ips='*'"]

@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from shared.exception_handler import *
 from shared.logger_middleware import *
 from shared.logger import *
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 
 class RabbitMQGateway:
@@ -130,7 +131,7 @@ app.add_middleware(
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
 app.middleware("http")(request_trace)
-
+app.add_middleware(ProxyHeadersMiddleware, trusted_proxies=["*"])
 
 async def publish(data: dict, routing_key):
     exchange = app.state.exchange
@@ -227,11 +228,11 @@ ROUTES_NA = {
 @app.middleware("http")
 async def proxy(request: Request, call_next):
     logger.info(
-        f"Request from {request.client.host} to {request.url.path}"
+        f"Request from {request.headers.get("X-Real-IP")} to {request.url.path}"
     )
 
     headers = MutableHeaders(scope=request.scope)
-    headers['X-Real-Ip'] = str(request.client.host)
+    headers['X-Real-Ip'] = request.headers.get("X-Real-IP")
     if hasattr(request, "_headers"):
         delattr(request, "_headers")
 
@@ -742,7 +743,7 @@ async def forgot_password(
             logger.error(
                 "External server error has occurred!", extra={
                     "status_code": req.status_code,
-                    "ip": request.client.host,
+                    "ip": request.headers.get("X-Real-IP"),
                     "error": req.text[:500],
                     "request_id": request_id.get(),
                 }
@@ -755,7 +756,7 @@ async def forgot_password(
 
         logger.info(
             f"Forgot password token has been issued!", extra={
-                "request_id": request_id.get(),
+                "request_id": request.headers.get("X-Real-IP"),
                 "ip": request.client.host,
             }
         )
