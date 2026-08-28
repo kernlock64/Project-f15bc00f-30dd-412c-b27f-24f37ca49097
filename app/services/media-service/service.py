@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from shared.exception_handler import *
 from shared.logger_middleware import *
 from shared.logger import *
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 MEDIA_KEY = os.getenv("MEDIA_KEY")
 
@@ -46,7 +45,6 @@ app.add_middleware(
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
 app.middleware("http")(request_trace)
-app.add_middleware(ProxyHeadersMiddleware, trusted_proxies=["*"])
 
 @app.get("/api/v1/media/get-image/{filename:path}")
 async def get_image(filename: str,

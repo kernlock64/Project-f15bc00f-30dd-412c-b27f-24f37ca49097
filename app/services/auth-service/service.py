@@ -18,7 +18,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from shared.exception_handler import *
 from shared.logger_middleware import *
 from shared.logger import *
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 
 class RabbitMQGateway:
@@ -131,7 +130,6 @@ app.add_middleware(
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
 app.middleware("http")(request_trace)
-app.add_middleware(ProxyHeadersMiddleware, trusted_proxies=["*"])
 
 async def publish(data: dict, routing_key):
     exchange = app.state.exchange
@@ -1284,7 +1282,13 @@ async def refresh(
 @app.api_route("/{path:path}", methods=["GET", "POST", "DELETE"])
 async def proxy(request: Request, client: AsyncClient = Depends(get_httpx), ):
     path = request.url.path
-    target_url = ROUTES.get(path.split("/")[3])
+    try:
+        target_url = ROUTES.get(path.split("/")[3])
+    except IndexError:
+        raise HTTPException(
+            status_code=404,
+            detail="Invalid URL!"
+        )
 
     if not target_url:
         raise HTTPException(

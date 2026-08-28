@@ -15,7 +15,6 @@ from model import TicketsDB, PriceListsDB
 from shared.exception_handler import *
 from shared.logger_middleware import *
 from shared.logger import *
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 limits = Limits(
     max_connections=1000,
@@ -67,7 +66,6 @@ async def get_db():
 app.add_exception_handler(Exception, universal_server_error_handler)
 app.add_exception_handler(StarletteException, universal_server_http_error_handler)
 app.middleware("http")(request_trace)
-app.add_middleware(ProxyHeadersMiddleware, trusted_proxies=["*"])
 
 async def send_request(
         dest: str,
