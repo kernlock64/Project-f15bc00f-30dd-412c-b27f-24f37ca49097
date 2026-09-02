@@ -8,55 +8,6 @@ from categories_cache import *
 
 MEDIA_KEY = os.getenv('MEDIA_KEY')
 
-ATTRIBUTES_CACHE = {
-    1: [],
-    11: ["condition"],
-    12: [],
-    121: ["width", "height", "diameter", "seasonality"],
-    122: ["diameter", "drilling", "width", "offset", "hub_diameter", "disk_type"],
-    123: ["diameter", "drilling", "width"],
-    124: ["diameter"],
-    125: [],
-    1251: ["diameter"],
-    1252: [],
-    16: [],
-    17: [],
-    18: ["weight_category"],
-    20: [],
-    13: [],
-    131: [],
-    2: [],
-    21: [],
-    3: [],
-    31: [],
-    32: [],
-    33: [],
-    331: [],
-    4: [],
-    41: [],
-    46: [],
-    5: [],
-    51: [],
-    54: [],
-    511: [],
-    5111: [],
-    512: [],
-    5121: [],
-    7: [],
-    71: [],
-    74: [],
-    9: [],
-    91: ["condition", "size"],
-    911: ["size"],
-    93: ["condition", "size"],
-    14: [],
-    142: [],
-    1421: [],
-    19: [],
-    191: [],
-    1911: []
-}
-
 
 async def initial_proceed(filename):
     try:
@@ -124,13 +75,13 @@ async def with_images_proceed(
 
                     for element in row['attributes'].split(','):
                         if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]] and \
-                                str(element).split(":")[0] != "condition":
+                                str(element).split(":")[0] != "sostojanie":
                             return {
                                 "status": "False",
                                 "message": "Attribute not found!"
                             }
 
-                    if str(element).split(":")[0] == "condition" and str(element).split(":")[1].lower() not in ["new",
+                    if str(element).split(":")[0] == "sostojanie" and str(element).split(":")[1].lower() not in ["new",
                                                                                                                 "used"]:
                         return {
                             "status": "False",
@@ -191,7 +142,7 @@ async def with_images_proceed(
                 posts.append(images_dir + "/" + post)
 
         for element in row['attributes'].split(','):
-            if str(element).split(":")[0] == "condition":
+            if str(element).split(":")[0] == "sostojanie":
                 response["metadata"]["status"] = "True"
                 return response
 
@@ -225,13 +176,13 @@ async def without_images_proceed(filename, posts, response):
                     }
                     for element in row['attributes'].split(','):
                         if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]] and \
-                                str(element).split(":")[0] != "condition":
+                                str(element).split(":")[0] != "sostojanie":
                             return {
                                 "status": "False",
                                 "message": "Attribute not found!"
                             }
 
-                    if str(element).split(":")[0] == "condition" and str(element).split(":")[1].lower() not in ["new",
+                    if str(element).split(":")[0] == "sostojanie" and str(element).split(":")[1].lower() not in ["new",
                                                                                                                 "used"]:
                         return {
                             "status": "False",
@@ -241,7 +192,7 @@ async def without_images_proceed(filename, posts, response):
                 posts.append(post)
 
         for element in row['attributes'].split(','):
-            if str(element).split(":")[0] == "condition":
+            if str(element).split(":")[0] == "sostojanie":
                 response["metadata"]["status"] = "True"
                 return response
 
