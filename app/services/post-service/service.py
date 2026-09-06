@@ -804,7 +804,8 @@ async def get_posts(
         for k in cat:
             k["subcategory"] = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == k["id"]]
         return {
-            "categories": cat,
+        "count": len(cat),
+        "categories": cat,
         }
 
     category_id = PATH_TO_ID.get(path)
@@ -826,6 +827,6 @@ async def get_posts(
     else:
         cat = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == category_id]
         return {
-            "categories": cat,
-
+        "count": len(cat),
+        "categories": cat,
         }
