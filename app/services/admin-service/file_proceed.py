@@ -9,6 +9,33 @@ from categories_cache import *
 MEDIA_KEY = os.getenv('MEDIA_KEY')
 
 
+async def type_checker(data, datatype, name):
+    if datatype == bool:
+        if data not in ["True", "False"]:
+            return False
+
+    if datatype == str:
+
+        if not data.isalpha():
+            return False
+
+        if name == "sostojanie":
+            if data not in ["used", "new"]:
+                return False
+        if name == "tip":
+            if data not in ["litye", "kovanye", "shtampovka"]:
+                return False
+        if name == "poljarnost":
+            if data not in ["pryamaya", "obratnya"]:
+                return False
+
+    if datatype == int:
+        if not data.isdigit():
+            return False
+
+    return True
+
+
 async def initial_proceed(filename):
     try:
         posts = []
@@ -81,8 +108,11 @@ async def with_images_proceed(
                                 "message": "Attribute not found!"
                             }
 
+                    await type_checker(str(element).split(":")[1], ATTRIBUTES_COND[str(element).split(":")[0]],
+                                       str(element).split(":")[0])
+
                     if str(element).split(":")[0] == "sostojanie" and str(element).split(":")[1].lower() not in ["new",
-                                                                                                                "used"]:
+                                                                                                                 "used"]:
                         return {
                             "status": "False",
                             "message": "Wrong condition!"
@@ -183,11 +213,14 @@ async def without_images_proceed(filename, posts, response):
                             }
 
                     if str(element).split(":")[0] == "sostojanie" and str(element).split(":")[1].lower() not in ["new",
-                                                                                                                "used"]:
+                                                                                                                 "used"]:
                         return {
                             "status": "False",
                             "message": "Wrong condition!"
                         }
+
+                    await type_checker(str(element).split(":")[1], ATTRIBUTES_COND[str(element).split(":")[0]],
+                                       str(element).split(":")[0])
 
                 posts.append(post)
 
