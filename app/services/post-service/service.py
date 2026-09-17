@@ -819,14 +819,12 @@ async def get_posts(
     category = CATEGORIES_CACHE.get(category_id)
 
     if category["is_leaf"]:
-        raise HTTPException(
-            status_code=404,
-            detail="Cannot fetch subcategories for a leaf category. Use the search endpoint directly",
-        )
+        return "Cannot fetch subcategories for a leaf category. Use the search endpoint directly"
 
     else:
         cat = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == category_id]
         return {
         "count": len(cat),
+        "category": category,
         "categories": cat,
         }
