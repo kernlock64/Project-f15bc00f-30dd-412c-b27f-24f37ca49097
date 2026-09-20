@@ -792,6 +792,7 @@ async def report_post(
 @app.get("/api/v1/posts/{path:path}")
 async def get_posts(
         path: str = None,
+        db: AsyncSession = Depends(get_db),
 ):
     if path.isdigit():
         raise HTTPException(
@@ -823,8 +824,36 @@ async def get_posts(
 
     else:
         cat = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == category_id]
+        leaves_id = []
+        for i in cat:
+            leaves_id += LEAVES_MAP.get(i["id"])
+        list(set(leaves_id))
+
+        final = {i: 0 for i in leaves_id}
+
+        total = await db.execute(
+            select(PostDB.category_id, func.count(PostDB.id))
+            .where(PostDB.category_id.in_(leaves_id))
+            .group_by(PostDB.category_id)
+        )
+
+        all_total = dict(total.all())
+        all_total.update(final)
+
+        temp = LEAVES_MAP.get(category["id"])
+        cnt = 0
+        print(all_total)
+        print(total)
+        for m in temp:
+           cnt += all_total[m]
+
+        for k in cat:
+            cnt = 0
+            for j in LEAVES_MAP.get(k["id"]):
+                cnt += all_total[j]
+            k["count"] = cnt
+
         return {
-        "count": len(cat),
         "category": category,
         "categories": cat,
         }
