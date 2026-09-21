@@ -840,12 +840,10 @@ async def get_posts(
         all_total = dict(total.all())
         all_total.update(final)
 
-        temp = LEAVES_MAP.get(category["id"])
         cnt = 0
-        print(all_total)
-        print(total)
-        for m in temp:
+        for m in LEAVES_MAP.get(category["id"]):
            cnt += all_total[m]
+        category["count"] = cnt
 
         for k in cat:
             cnt = 0
