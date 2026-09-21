@@ -1,3 +1,4 @@
+import copy
 import json
 import sqlalchemy
 from geoalchemy2 import WKTElement
@@ -788,7 +789,6 @@ async def report_post(
             detail="No such post!",
         )
 
-
 @app.get("/api/v1/posts/{path:path}")
 async def get_posts(
         path: str = None,
@@ -801,11 +801,10 @@ async def get_posts(
         )
 
     if not path:
-        cat = [i for i in CATEGORIES_CACHE.values() if not i["parent_id"]]
+        cat = [copy.deepcopy(i) for i in CATEGORIES_CACHE.values() if not i["parent_id"]]
         for k in cat:
-            k["subcategory"] = [i for i in CATEGORIES_CACHE.values() if i["parent_id"] == k["id"]]
+            k["subcategory"] = [copy.deepcopy(i) for i in CATEGORIES_CACHE.values() if i["parent_id"] == k["id"]]
         return {
-        "count": len(cat),
         "categories": cat,
         }
 
