@@ -127,7 +127,7 @@ async def delete_image(
 
     logger.info(
         "Image has been successfully deleted!", extra={
-            "name": filename,
+            "i_name": filename,
             "request_id": request_id,
         }
     )
@@ -154,7 +154,7 @@ async def change_image(
 
     logger.info(
         "Image has been successfully updated!", extra={
-            "name": filename,
+            "i_name": filename,
             "request_id": request_id,
         }
     )
