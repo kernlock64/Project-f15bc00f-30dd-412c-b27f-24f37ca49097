@@ -69,6 +69,10 @@ async def lifespan(cl: FastAPI):
             "attributes.*",
             "author_id"
         ],
+        sortable_attributes=[
+            "date",
+            "price"
+        ],
         searchable_attributes=[
             "title",
             "description",
@@ -334,13 +338,14 @@ async def manipulate(
                 try:
 
                     if metadata["is_images"] == "t":
+                        date1 = datetime.now(timezone.utc)
                         for post in posts:
                             post_id = str((lambda: ''.join(
                                 secrets.choice("abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789") for _ in
                                 range(19)))())
 
                             p = PostDB(id=post_id, author_id=uid, title=post["title"],
-                                       posted_at=datetime.now(timezone.utc),
+                                       posted_at=date1,
                                        description=post["description"],
                                        images=dict(post).get("images"),
                                        directory_name=dict(post).get("images_dir"),
@@ -357,6 +362,7 @@ async def manipulate(
 
                             await client.add_documents([
                                 {"id": post_id, "title": post["title"], "price": post["price"],
+                                 "date": date1.timestamp(),
                                  "title_image": str(str(post["images_dir"]) + "/" + str(post['title_image'])),
                                  "category_id":
                                      post["category_path"],
@@ -380,13 +386,14 @@ async def manipulate(
                             return None
 
                     elif metadata["is_images"] == "f":
+                        date2 = datetime.now(timezone.utc)
                         for post in posts:
                             post_id = str((lambda: ''.join(
                                 secrets.choice("abcdefghijkmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ23456789") for _ in
                                 range(19)))())
 
                             p = PostDB(id=post_id, author_id=uid, title=post["title"],
-                                       posted_at=datetime.now(timezone.utc),
+                                       posted_at=date2,
                                        description=post["description"],
                                        category_id=post["category_path"],
                                        price_list_name=price_list_name,
@@ -400,6 +407,7 @@ async def manipulate(
 
                             await client.add_documents([
                                 {"id": post_id, "title": post["title"], "price": post["price"],
+                                 "date": date2.timestamp(),
                                  "category_id":
                                      post["category_path"],
                                  "author_id": uid,
@@ -530,12 +538,14 @@ async def search_posts(
         page: int = 1,
         limit: int = 10,
         fil: str = None,
+        sort: str = None,
         q: str = None,
         meili: MeiliClient = Depends(get_meili),
 ):
     offset = (page - 1) * limit
+    sort = [sort] if sort else []
 
-    result = await meili.index("posts").search(q, filter=fil, offset=offset, limit=limit)
+    result = await meili.index("posts").search(q, filter=fil, offset=offset, limit=limit, sort=sort)
 
     return {
         "count": result.estimated_total_hits,
@@ -789,6 +799,7 @@ async def report_post(
             detail="No such post!",
         )
 
+
 @app.get("/api/v1/posts/{path:path}")
 async def get_posts(
         path: str = None,
@@ -805,7 +816,7 @@ async def get_posts(
         for k in cat:
             k["subcategory"] = [copy.deepcopy(i) for i in CATEGORIES_CACHE.values() if i["parent_id"] == k["id"]]
         return {
-        "categories": cat,
+            "categories": cat,
         }
 
     category_id = PATH_TO_ID.get(path)
@@ -841,7 +852,7 @@ async def get_posts(
 
         cnt = 0
         for m in LEAVES_MAP.get(category["id"]):
-           cnt += all_total[m]
+            cnt += all_total[m]
         category["count"] = cnt
 
         for k in cat:
@@ -851,6 +862,6 @@ async def get_posts(
             k["count"] = cnt
 
         return {
-        "category": category,
-        "categories": cat,
+            "category": category,
+            "categories": cat,
         }

@@ -454,7 +454,7 @@ async def user_manipulate(
     if not req_id:
         raise HTTPException(status_code=404, detail="NO_SUCH_REQUEST")
 
-    tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == request_id.get()))
+    tickets = await db.execute(select(TicketsDB).where(TicketsDB.id == req_id))
     ticket = tickets.scalar_one_or_none()
 
     if not ticket:
@@ -478,7 +478,7 @@ async def user_manipulate(
         logger.info(
             f"User {ticket.author_id} was verified by admin", extra={
                 "ip": request.headers.get("X-Real-IP"),
-                "request_id": request_id.get().get(),
+                "request_id": request_id.get(),
             }
         )
 

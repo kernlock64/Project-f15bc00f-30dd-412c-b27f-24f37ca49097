@@ -19,7 +19,7 @@ async def type_checker(data, datatype, name):
         if not data.isalpha():
             return False
 
-        if name == "sostojanie":
+        if name == "sostoianie":
             if data not in ["used", "new"]:
                 return False
         if name == "tip":
@@ -101,21 +101,17 @@ async def with_images_proceed(
                     }
 
                     for element in row['attributes'].split(','):
-                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]] and \
-                                str(element).split(":")[0] != "sostojanie":
+                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]]:
                             return {
                                 "status": "False",
                                 "message": "Attribute not found!"
                             }
 
-                    await type_checker(str(element).split(":")[1], ATTRIBUTES_COND[str(element).split(":")[0]],
-                                       str(element).split(":")[0])
-
-                    if str(element).split(":")[0] == "sostojanie" and str(element).split(":")[1].lower() not in ["new",
-                                                                                                                 "used"]:
+                    if not await type_checker(str(element).split(":")[1], ATTRIBUTES_COND[str(element).split(":")[0]],
+                                       str(element).split(":")[0]):
                         return {
                             "status": "False",
-                            "message": "Wrong condition!"
+                            "message": "Wrong attribute or value!"
                         }
 
                     imgs = row['images'].split(',')
@@ -168,18 +164,10 @@ async def with_images_proceed(
                                     "status": "False",
                                     "message": "Error adding image",
                                 }
+                posts.append(post)
+            response["metadata"]["status"] = "True"
+            return response
 
-                posts.append(images_dir + "/" + post)
-
-        for element in row['attributes'].split(','):
-            if str(element).split(":")[0] == "sostojanie":
-                response["metadata"]["status"] = "True"
-                return response
-
-        return {
-            "status": "False",
-            "message": "No condition!"
-        }
 
     except Exception as e:
         return {
@@ -205,34 +193,25 @@ async def without_images_proceed(filename, posts, response):
                         'attributes': row['attributes'],
                     }
                     for element in row['attributes'].split(','):
-                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]] and \
-                                str(element).split(":")[0] != "sostojanie":
+                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]]:
                             return {
                                 "status": "False",
                                 "message": "Attribute not found!"
                             }
 
-                    if str(element).split(":")[0] == "sostojanie" and str(element).split(":")[1].lower() not in ["new",
-                                                                                                                 "used"]:
+                    if not await type_checker(str(element).split(":")[1], ATTRIBUTES_COND[str(element).split(":")[0]],
+                                       str(element).split(":")[0]):
                         return {
                             "status": "False",
-                            "message": "Wrong condition!"
+                            "message": "Wrong attribute or value!"
                         }
 
-                    await type_checker(str(element).split(":")[1], ATTRIBUTES_COND[str(element).split(":")[0]],
-                                       str(element).split(":")[0])
 
                 posts.append(post)
 
-        for element in row['attributes'].split(','):
-            if str(element).split(":")[0] == "sostojanie":
-                response["metadata"]["status"] = "True"
-                return response
+            response["metadata"]["status"] = "True"
+            return response
 
-        return {
-            "status": "False",
-            "message": "No condition!"
-        }
 
     except Exception as e:
         return {

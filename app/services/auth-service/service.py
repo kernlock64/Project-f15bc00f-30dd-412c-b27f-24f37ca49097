@@ -230,7 +230,7 @@ async def proxy(request: Request, call_next):
     )
 
     headers = MutableHeaders(scope=request.scope)
-    headers['X-Real-Ip'] = request.headers.get("X-Real-IP")
+    headers['X-Real-Ip'] = request.headers.get("X-Real-IP") if request.headers.get("X-Real-IP") else "1.1.1.1"
     if hasattr(request, "_headers"):
         delattr(request, "_headers")
 
@@ -1058,7 +1058,7 @@ async def login(
     payload = {
         "role": user.role,
         "uid": user.uid,
-        "jit": str(uuid.uuid4()),
+        "jti": str(uuid.uuid4()),
         "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
         "tov": user.token_version,
         "thm": "access"
@@ -1160,6 +1160,12 @@ async def change_email(
             detail="NO_SUCH_USER"
         )
 
+    try:
+        validate_email(new_email, check_deliverability=True)
+
+    except EmailNotValidError:
+        return {"status": "False", "message": 'INVALID_EMAIL'}
+
     user.email = new_email
 
     await publish({"X-User-Id": str(uid), "X-Role": str(role), "X-Changed-Value": new_email},
@@ -1260,7 +1266,7 @@ async def refresh(
         payload = {
             "role": user.role,
             "uid": user.uid,
-            "jit": str(uuid.uuid4()),
+            "jti": str(uuid.uuid4()),
             "exp": datetime.now(tz=timezone.utc) + timedelta(seconds=900),
             "tov": user.token_version,
             "thm": "access"

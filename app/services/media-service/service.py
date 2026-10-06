@@ -91,7 +91,7 @@ async def add_image(
 
     logger.info(
         "Image has been successfully uploaded!", extra={
-            "name": name,
+            "i_name": name,
             "request_id": request_id,
         }
     )
