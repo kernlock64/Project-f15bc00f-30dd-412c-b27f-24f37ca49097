@@ -101,7 +101,8 @@ async def with_images_proceed(
                     }
 
                     for element in row['attributes'].split(','):
-                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]]:
+                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]] and row[
+                            'attributes'].split(',')[0] != "":
                             return {
                                 "status": "False",
                                 "message": "Attribute not found!"
@@ -193,7 +194,8 @@ async def without_images_proceed(filename, posts, response):
                         'attributes': row['attributes'],
                     }
                     for element in row['attributes'].split(','):
-                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]]:
+                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]] and row[
+                            'attributes'].split(',')[0] != "":
                             return {
                                 "status": "False",
                                 "message": "Attribute not found!"
