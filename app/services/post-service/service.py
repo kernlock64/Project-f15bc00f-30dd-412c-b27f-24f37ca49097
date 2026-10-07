@@ -369,7 +369,8 @@ async def manipulate(
                                  "author_id": uid,
                                  "author_name": author_name,
                                  "author_image": author_image,
-                                 "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
+                                 "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")} if
+                                 post["attributes"] != "" else None,
                                  }
                             ])
 
@@ -413,7 +414,8 @@ async def manipulate(
                                  "author_id": uid,
                                  "author_name": author_name,
                                  "author_image": author_image,
-                                 "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")},
+                                 "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")} if
+                                 post["attributes"] != "" else None,
                                  }
                             ], primary_key="id")
 

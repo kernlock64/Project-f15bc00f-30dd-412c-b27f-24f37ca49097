@@ -99,14 +99,13 @@ async def with_images_proceed(
                         'attributes': row['attributes'],
 
                     }
-
-                    for element in row['attributes'].split(','):
-                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]] and row[
-                            'attributes'].split(',')[0] != "":
-                            return {
-                                "status": "False",
-                                "message": "Attribute not found!"
-                            }
+                    if row['attributes'].split(',')[0] != "":
+                        for element in row['attributes'].split(','):
+                            if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]]:
+                                return {
+                                    "status": "False",
+                                    "message": "Attribute not found!"
+                                }
 
                     if not await type_checker(str(element).split(":")[1], ATTRIBUTES_COND[str(element).split(":")[0]],
                                        str(element).split(":")[0]):
@@ -165,7 +164,7 @@ async def with_images_proceed(
                                     "status": "False",
                                     "message": "Error adding image",
                                 }
-                posts.append(post)
+                    posts.append(post)
             response["metadata"]["status"] = "True"
             return response
 
@@ -193,13 +192,13 @@ async def without_images_proceed(filename, posts, response):
                         'price': row['price'],
                         'attributes': row['attributes'],
                     }
-                    for element in row['attributes'].split(','):
-                        if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]] and row[
-                            'attributes'].split(',')[0] != "":
-                            return {
-                                "status": "False",
-                                "message": "Attribute not found!"
-                            }
+                    if row['attributes'].split(',')[0] != "":
+                        for element in row['attributes'].split(','):
+                            if str(element).split(":")[0] not in ATTRIBUTES_CACHE[PATH_TO_ID[row['category_path']]]:
+                                return {
+                                    "status": "False",
+                                    "message": "Attribute not found!"
+                                }
 
                     if not await type_checker(str(element).split(":")[1], ATTRIBUTES_COND[str(element).split(":")[0]],
                                        str(element).split(":")[0]):
@@ -209,8 +208,7 @@ async def without_images_proceed(filename, posts, response):
                         }
 
 
-                posts.append(post)
-
+                    posts.append(post)
             response["metadata"]["status"] = "True"
             return response
 
