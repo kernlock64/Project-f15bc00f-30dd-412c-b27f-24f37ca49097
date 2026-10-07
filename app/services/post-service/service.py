@@ -66,7 +66,7 @@ async def lifespan(cl: FastAPI):
         filterable_attributes=[
             "price",
             "category_id",
-            "attributes.*",
+            "attributes",
             "author_id"
         ],
         sortable_attributes=[
@@ -384,7 +384,7 @@ async def manipulate(
                                 }
                             )
 
-                            return None
+                        return None
 
                     elif metadata["is_images"] == "f":
                         date2 = datetime.now(timezone.utc)
@@ -429,7 +429,7 @@ async def manipulate(
                                 }
                             )
 
-                            return None
+                        return None
 
                 except sqlalchemy.exc.IntegrityError:
                     raise HTTPException(

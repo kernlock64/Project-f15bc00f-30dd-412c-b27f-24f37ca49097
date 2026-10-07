@@ -79,13 +79,13 @@ async def with_images_proceed(
         response
 ):
     try:
-        images = []
         client = await get_httpx()
         with zipfile.ZipFile(f'temp/{filename}', 'r') as z:
             with z.open('posts.csv') as f:
                 text_file = io.TextIOWrapper(f, encoding='utf-8')
                 reader = csv.DictReader(text_file)
                 for row in reader:
+                    images = []
                     images_dir = str(uuid.uuid4())
                     post = {
                         'title': row['title'],
@@ -166,6 +166,7 @@ async def with_images_proceed(
                                 }
                     posts.append(post)
             response["metadata"]["status"] = "True"
+            print(posts)
             return response
 
 
