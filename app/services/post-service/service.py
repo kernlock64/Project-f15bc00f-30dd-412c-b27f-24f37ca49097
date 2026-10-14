@@ -80,6 +80,8 @@ async def lifespan(cl: FastAPI):
         displayed_attributes=[
             "id",
             "title",
+            "description",
+            "date",
             "price",
             "title_image",
             "category_id",
@@ -366,6 +368,7 @@ async def manipulate(
                                  "title_image": str(str(post["images_dir"]) + "/" + str(post['title_image'])),
                                  "category_id":
                                      post["category_path"],
+                                 "description": post["description"],
                                  "author_id": uid,
                                  "author_name": author_name,
                                  "author_image": author_image,
@@ -408,6 +411,7 @@ async def manipulate(
 
                             await client.add_documents([
                                 {"id": post_id, "title": post["title"], "price": post["price"],
+                                 "description": post["description"],
                                  "date": date2.timestamp(),
                                  "category_id":
                                      post["category_path"],

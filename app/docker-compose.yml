@@ -111,10 +111,11 @@ services:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
     healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "check_port_connectivity" ]
-      interval: 5s
-      timeout: 5s
+      test: [ "CMD", "rabbitmq-diagnostics", "-q" "ping" ]
+      interval: 10s
+      timeout: 10s
       retries: 5
+      start_period: 45s
     environment:
       RABBITMQ_DEFAULT_USER: "admin"
       RABBITMQ_DEFAULT_PASS: "${DB_PASSWORD}"
