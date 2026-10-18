@@ -73,7 +73,7 @@ Actual commit history can be seen in the "Activity" section.
 - For filtering the Meilisearch query language is used. Requests are created on the client side and sent in the fil query parameter.
 - The sort parameter is available only for two types of data (date and price) and can be "desc" or "asc".
 
-### 3. Архитектура внешних модулей
+### 3. External modules architecture
 
 ![](doc/images/schema5.png)
 
