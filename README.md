@@ -82,33 +82,47 @@ Actual commit history can be seen in the "Activity" section.
 - Data transfer via the ACP (Admin Communication Protocol) occurs through transmitting a JWT from the admin-service to the auth-service. Admin-type tokens have claims (dest: destination, exp: expires_at, thm:admin). Admin-type tokens are issued only on the admin-service side. The dest claim takes one of nine values depending on service and operation. The first byte is the operation byte and the second byte is the first letter of the target service.
 - For access to the admin panel (path /api/v1/management/web-health) users undergo mTLS verification. Certificates are issued by the system administrator.
 ---
-- ##### **FastAPI (Major Framework):** The framework is modern and lightweight and supports asynchronous execution. It is loosely coupled with components, allowing developers to manage and control the technology stack on their own. The framework provides autodocumentation for endpoints (OpenAPI/Swagger), increasing developer productivity.
+- ##### **FastAPI (Major Framework):**
+  	 The framework is modern and lightweight and supports asynchronous execution. It is loosely coupled with components, allowing developers to manage and control the technology stack on their own. The framework provides autodocumentation for endpoints (OpenAPI/Swagger), increasing developer productivity.
      
-- ##### **PostgreSQL (DBMS):** The system supports asynchronous requests to the database (if using the asyncpg driver), and can store data in JSON format. It runs as a server and is available for running as a Docker container, simplifying the integration of all services into a single cluster.
+- ##### **PostgreSQL (DBMS):**
+	 The system supports asynchronous requests to the database (if using the asyncpg driver), and can store data in JSON format. It runs as a server and is available for running as a Docker container, simplifying the integration of all services into a single cluster.
      
-- ##### **Secondary DB Stack (SQLAlchemy + Alembic):** Tools provide convenient interaction with the database. SQLAlchemy is a standard ORM which allows developers to write SQL queries in Python code. That is a more secure and proper way to interact with the database. Alembic is a version control system which allows developers to make data migrations in case of changes in table structure.
+- ##### **Secondary DB Stack (SQLAlchemy + Alembic):**
+   	 Tools provide convenient interaction with the database. SQLAlchemy is a standard ORM which allows developers to write SQL queries in Python code. That is a more secure and proper way to interact with the database. Alembic is a version control system which allows developers to make data migrations in case of changes in table structure.
      
-- ##### **Search Engine (Meilisearch):** The search engine enables users to make index search instantly. It supports fuzzy search, allowing users to search using approximate data. The system provides a convenient query language for data filtering.
+- ##### **Search Engine (Meilisearch):**
+  	 The search engine enables users to make index search instantly. It supports fuzzy search, allowing users to search using approximate data. The system provides a convenient query language for data filtering.
      
-- ##### **Object Storage (SeaweedFS):** - A distributed media storage system which supports file streaming and asynchronous operations.
+- ##### **Object Storage (SeaweedFS):**
+   	 A distributed media storage system which supports file streaming and asynchronous operations.
      
-- ##### **Message Broker (RabbitMQ):** A message broker that allows developers to avoid request cascades in microservice architectures, thereby reducing network latency. It provides temporary queues which are used for scheduled tasks (such as user deletion in case of an unverified email). The system guarantees message delivery even if the target service is unavailable.
+- ##### **Message Broker (RabbitMQ):**
+  	 A message broker that allows developers to avoid request cascades in microservice architectures, thereby reducing network latency. It provides temporary queues which are used for scheduled tasks (such as user deletion in case of an unverified email). The system guarantees message delivery even if the target service is unavailable.
      
-- ##### **High-Speed Logging (ClickHouse/Vector):** A columnar database for business analytics, has high performance and is able to add new data extremely fast.
+- ##### **High-Speed Logging (ClickHouse/Vector):**
+  	 A columnar database for business analytics, has high performance and is able to add new data extremely fast.
      
-- ##### **Infrastructure (Docker / Docker Compose):** A system of virtualization and orchestration for efficient dependency management and establishing microservice architectures. Docker allows developers to create containers with an already configured environment, guaranteeing reliable execution of the target logic on every system with Docker. Docker Compose is an orchestration system, allowing developers to create isolated networks of containers which interact using internal names; that enables developers to create architectures like Perimeter Security with Centralized Authentication Gateway.
+- ##### **Infrastructure (Docker / Docker Compose):**
+  	 A system of virtualization and orchestration for efficient dependency management and establishing microservice architectures. Docker allows developers to create containers with an already configured environment, guaranteeing reliable execution of the target logic on every system with Docker. Docker Compose is an orchestration system, allowing developers to create isolated networks of containers which interact using internal names; that enables developers to create architectures like Perimeter Security with Centralized Authentication Gateway.
      
-- ##### **Microservice Architecture and Perimeter Security with Centralized Authentication Gateway (App Structure):** An architecture where every logic element in a system is a separate container (separating method depends on a project). Such an architecture allows developers to create clusters of containers, isolated at the network level (interacting using internal names). The technology stack (programming languages, etc.) could be different on every container as containers interact in accordance with the API a container provides and the chosen protocol (HTTP, gRPC, etc.). The Perimeter Security with Centralized Authentication Gateway Architecture is a special case of microservice architecture which allows developers to define a single point of access to an isolated network, transmitting trusted data to the internal logic. This architecture prevents attacks on internal services (as containers are isolated), substantially reducing the attack surface.
+- ##### **Microservice Architecture and Perimeter Security with Centralized Authentication Gateway (App Structure):**
+  	 An architecture where every logic element in a system is a separate container (separating method depends on a project). Such an architecture allows developers to create clusters of containers, isolated at the network level (interacting using internal names). The technology stack (programming languages, etc.) could be different on every container as containers interact in accordance with the API a container provides and the chosen protocol (HTTP, gRPC, etc.). The Perimeter Security with Centralized Authentication Gateway Architecture is a special case of microservice architecture which allows developers to define a single point of access to an isolated network, transmitting trusted data to the internal logic. This architecture prevents attacks on internal services (as containers are isolated), substantially reducing the attack surface.
      
-- ##### **ACP (Admin Communication Protocol):** An application protocol based on HTTP/REST for transmitting messages from admin-service to auth-service. The protocol provides authorized (temporary) access to specific segments of the system. It is based on transmitting a JWT with operation-byte (dest claim, second symbol in payload), destination-byte (dest claim, first symbol in payload), expiration claim (exp), to minimize damage in case of token interception. Example: destination byte "a" (auth-service), operation byte "v" (verify), with exp (expires) in 5 minutes.
+- ##### **ACP (Admin Communication Protocol):**
+  	 An application protocol based on HTTP/REST for transmitting messages from admin-service to auth-service. The protocol provides authorized (temporary) access to specific segments of the system. It is based on transmitting a JWT with operation-byte (dest claim, second symbol in payload), destination-byte (dest claim, first symbol in payload), expiration claim (exp), to minimize damage in case of token interception. Example: destination byte "a" (auth-service), operation byte "v" (verify), with exp (expires) in 5 minutes.
      
-- ##### **API Key (Access to media-service):** A measure for preventing unauthorized access to the service with access to critical app infrastructure (database with media) by restricting access to some endpoints (for creating, modifying or deleting data in media-service) by validating the master-key on every request. Services which are allowed to use these endpoints contain this key in headers. This approach is easy to implement and establishes a basic level of security.
+- ##### **API Key (Access to media-service):**
+  	 A measure for preventing unauthorized access to the service with access to critical app infrastructure (database with media) by restricting access to some endpoints (for creating, modifying or deleting data in media-service) by validating the master-key on every request. Services which are allowed to use these endpoints contain this key in headers. This approach is easy to implement and establishes a basic level of security.
      
-- ##### **Lazy Polling Using Cache (Favourites-Service):** A method of data updating using the lazy loading method with data caching. When some ad is being requested the service checks whether valid cache exists; if yes, it returns the response; if not, it makes a request to the post-service, caches it and then returns it to the user. The cache has an expiration period (15 minutes) and must be updated when it expires. This approach is effective and reduces the number of network requests.
+- ##### **Lazy Polling Using Cache (Favourites-Service):**
+  	 A method of data updating using the lazy loading method with data caching. When some ad is being requested the service checks whether valid cache exists; if yes, it returns the response; if not, it makes a request to the post-service, caches it and then returns it to the user. The cache has an expiration period (15 minutes) and must be updated when it expires. This approach is effective and reduces the number of network requests.
       
-- ##### **mTLS Verification (Access to admin-service):** A method that ensures authorized access to the admin-service for a restricted group of users using client certificate verification at the browser level. The administrators issue and distribute certificates at their discretion. This approach significantly reduces the attack surface as unauthorized requests cannot pass through the proxy.
+- ##### **mTLS Verification (Access to admin-service):**
+  	 A method that ensures authorized access to the admin-service for a restricted group of users using client certificate verification at the browser level. The administrators issue and distribute certificates at their discretion. This approach significantly reduces the attack surface as unauthorized requests cannot pass through the proxy.
         
-- ##### **Image Streaming (Overall Architecture):** A method of transmitting files in batches of fixed size. This approach is memory-efficient as files are processed in streaming mode and never fully loaded into RAM.
+- ##### **Image Streaming (Overall Architecture):**
+  	 A method of transmitting files in batches of fixed size. This approach is memory-efficient as files are processed in streaming mode and never fully loaded into RAM.
 ---
 ## 5. Other Architecture Features
 
