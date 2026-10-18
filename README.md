@@ -8,7 +8,7 @@
 ##  1. Executive Summary & Scope
 
 **Business Context:**  
-Development of E2E backend and full server infrastructure setup for ad aggregator website "K". Target audience is wholesale business owners from region N. Major business requirements: relevant ad feed, useful admin-panel for ad uploading, multi-stage registration procedure.
+Development of E2E backend and full server infrastructure setup for ad aggregator website "Iceberg-Market". Target audience is wholesale business owners from Sochi, Russia. Major business requirements: relevant ad feed, useful admin-panel for ad uploading, multi-stage registration procedure.
 
 **Engineering Scope:**  
 The project has **[microservice architecture](#microservice-architecture-and-perimeter-security-with-centralized-authentication-gateway-app-structure)**, communication protocol: HTTP/REST. App main framework: [FastAPI](#fastapi-major-framework). Additional services [Meilisearch](#search-engine-meilisearch) for fast search, [RabbitMQ](#message-broker-rabbitmq) for event-driven communication, [SeaweedFS](#object-storage-seaweedfs) for media storage, [ClickHouse/Vector](#high-speed-logging-clickhousevector) for logging, [PostgreSQL](#postgresql-dbms) for data storage) are presented as separate services. Supplementary libraries ([Alembic and SQLAlchemy](#secondary-db-stack-sqlalchemy--alembic)) are presented as standard dependencies. The whole infrastructure is based on [Docker](#infrastructure-docker--docker-compose) containers and orchestrated by [Docker Compose](#infrastructure-docker--docker-compose).
