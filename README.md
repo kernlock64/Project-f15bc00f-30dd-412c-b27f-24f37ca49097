@@ -36,7 +36,7 @@ Actual commit history can be seen in the "Activity" section.
 ### 1. Module Communication Details
 
 ![](doc/images/schema1.png)
- - For admin-service and core-services interaction - application protocol **[ACP](#acp-admin-communication-protocol)]** (Admin Communication Protocol) was devised over standard HTTP/REST. For communication between other services standard HTTP/REST is used.
+ - For admin-service and core-services interaction - application protocol **[ACP](#acp-admin-communication-protocol)** (Admin Communication Protocol) was devised over standard HTTP/REST. For communication between other services standard HTTP/REST is used.
  - In case of POST/DELETE requests to media-service: the service requests an [API Key](#api-key-access-to-media-service) which is held only by services that are allowed to add or delete images. The API Key is loaded into the container RAM on every startup.
  - Media-service has no DB connection as it's a layer of abstraction over SeaweedFS and provides an API to other services without any specific business logic.
  
