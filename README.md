@@ -35,7 +35,7 @@ Actual commit history can be seen in the "Activity" section.
 
 ### 1. Module Communication Details
 
-![](doc/images/schema.png)
+![](doc/images/schema1.png)
  - For admin-service and core-services interaction - application protocol **[[#^ec7953|ACP]]** (Admin Communication Protocol) was devised over standard HTTP/REST. For communication between other services standard HTTP/REST is used.
  - In case of POST/DELETE requests to media-service: the service requests an [[Описание UrbanSpot#^499f02|API Key]] which is held only by services that are allowed to add or delete images. The API Key is loaded into the container RAM on every startup.
  - Media-service has no DB connection as it's a layer of abstraction over SeaweedFS and provides an API to other services without any specific business logic.
@@ -43,7 +43,7 @@ Actual commit history can be seen in the "Activity" section.
 ---
 ### 2. Features of inter-service communication
 
-![](doc/images/schema1.png)
+![](doc/images/schema2.png)
 - Single Entry Point for all requests to core-services/admin-service is auth-service, establishing [[#^c8a5a1|Perimeter Security with Centralized Authentication Gateway]] architecture. After successful user JWT token verification, the service creates trusted headers (X-User-Id and X-Role) and proxies the request to the internal isolated network. Subsequent user verification takes place via trusted headers.
 - User deletion, email changing and scheduled tasks occur through RabbitMQ usage.
 	- Upon user deletion, auth-service sends a message with the user's X-User-Id to Deletion Queue; then the user-service/post-service/favourite-service read the message and start the deletion operation. The task goes to the FastAPI background tasks so the user receives an immediate response
@@ -58,7 +58,7 @@ Actual commit history can be seen in the "Activity" section.
 
 #### 1. Auth-service architecture
 
-![](doc/images/schema2.png)
+![](doc/images/schema3.png)
 
 - The majority of requests to auth-service do not demand a JWT as they do not require trusted X-Headers for identification ("/api/v1/registration", "/api/v1/login", "/api/v1/forgot-password",  "/api/v1/user-confirm").
 - For user authentication stateless token is used - JWT. The private key is based on modern standard ES256 (using elliptic curves). JWT access tokens are issued only via two endpoints (/api/v1/login and /api/v1/refresh). Access token has claims (role, uid: user_id, jti: JSON token id, exp: expires_in, tov: token_version, thm: theme_of_token).
@@ -67,7 +67,7 @@ Actual commit history can be seen in the "Activity" section.
 - The tov claim is used for user sessions control using stateless JWT. If user logs out (or performs another action requiring user's session deactivation), refresh-token in database will be deactivated and token_version field will be incremented.
 ### 2. Internal services architecture
 
-![](doc/images/schema3.png)
+![](doc/images/schema4.png)
 
 - Interaction with the search system proceeds via the /api/v1/posts/search endpoint, accepting query parameters (q: query, fil: filter, sort, limit, page).
 - For filtering the Meilisearch query language is used. Requests are created on the client side and sent in the fil query parameter.
@@ -75,7 +75,7 @@ Actual commit history can be seen in the "Activity" section.
 
 ### 3. Архитектура внешних модулей
 
-![](doc/images/schema4.png)
+![](doc/images/schema5.png)
 
 - External services are separated from the main cluster by the API Gateway routing. They do not require user identification and therefore can work without auth-service.
 - To minimize RAM consumption, a [[#^543384|streaming image processing method]] is used. This approach is applied in the majority of scenarios ([[#^44d052|the exception is primary image processing during ad uploading]]).
@@ -143,7 +143,7 @@ Actual commit history can be seen in the "Activity" section.
 
 ## 6. Database ERD
 
-![](doc/images/schema5.png)
+![](doc/images/schema.png)
 
 ### Features of database structure
 
