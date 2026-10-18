@@ -36,15 +36,15 @@ Actual commit history can be seen in the "Activity" section.
 ### 1. Module Communication Details
 
 ![](doc/images/schema1.png)
- - For admin-service and core-services interaction - application protocol **[[#^ec7953|ACP]]** (Admin Communication Protocol) was devised over standard HTTP/REST. For communication between other services standard HTTP/REST is used.
- - In case of POST/DELETE requests to media-service: the service requests an [[Описание UrbanSpot#^499f02|API Key]] which is held only by services that are allowed to add or delete images. The API Key is loaded into the container RAM on every startup.
+ - For admin-service and core-services interaction - application protocol **[ACP](#acp-admin-communication-protocol)]** (Admin Communication Protocol) was devised over standard HTTP/REST. For communication between other services standard HTTP/REST is used.
+ - In case of POST/DELETE requests to media-service: the service requests an [API Key](#api-key-access-to-media-service) which is held only by services that are allowed to add or delete images. The API Key is loaded into the container RAM on every startup.
  - Media-service has no DB connection as it's a layer of abstraction over SeaweedFS and provides an API to other services without any specific business logic.
  
 ---
 ### 2. Features of inter-service communication
 
 ![](doc/images/schema2.png)
-- Single Entry Point for all requests to core-services/admin-service is auth-service, establishing [[#^c8a5a1|Perimeter Security with Centralized Authentication Gateway]] architecture. After successful user JWT token verification, the service creates trusted headers (X-User-Id and X-Role) and proxies the request to the internal isolated network. Subsequent user verification takes place via trusted headers.
+- Single Entry Point for all requests to core-services/admin-service is auth-service, establishing [Perimeter Security with Centralized Authentication Gateway](#microservice-architecture-and-perimeter-security-with-centralized-authentication-gateway-app-structure) architecture. After successful user JWT token verification, the service creates trusted headers (X-User-Id and X-Role) and proxies the request to the internal isolated network. Subsequent user verification takes place via trusted headers.
 - User deletion, email changing and scheduled tasks occur through RabbitMQ usage.
 	- Upon user deletion, auth-service sends a message with the user's X-User-Id to Deletion Queue; then the user-service/post-service/favourite-service read the message and start the deletion operation. The task goes to the FastAPI background tasks so the user receives an immediate response
 	- Upon email changing, auth-service sends a message with the user's X-User-Id to Email Changing Queue; on the next step user-service reads the message and updates the data.
@@ -78,7 +78,7 @@ Actual commit history can be seen in the "Activity" section.
 ![](doc/images/schema5.png)
 
 - External services are separated from the main cluster by the API Gateway routing. They do not require user identification and therefore can work without auth-service.
-- To minimize RAM consumption, a [[#^543384|streaming image processing method]] is used. This approach is applied in the majority of scenarios ([[#^44d052|the exception is primary image processing during ad uploading]]).
+- To minimize RAM consumption, a [streaming image processing method](#image-streaming-overall-architecture) is used. This approach is applied in the majority of scenarios ([the exception is primary image processing during ad uploading](#5-other-architecture-features)).
 - Data transfer via the ACP (Admin Communication Protocol) occurs through transmitting a JWT from the admin-service to the auth-service. Admin-type tokens have claims (dest: destination, exp: expires_at, thm:admin). Admin-type tokens are issued only on the admin-service side. The dest claim takes one of nine values depending on service and operation. The first byte is the operation byte and the second byte is the first letter of the target service.
 - For access to the admin panel (path /api/v1/management/web-health) users undergo mTLS verification. Certificates are issued by the system administrator.
 ---
