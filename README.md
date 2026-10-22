@@ -136,9 +136,9 @@ Actual commit history can be seen in the "Activity" section.
 	- Stage 1: Uploading the archive according to the specification (files init.csv, posts.csv and the img directory)
 		- The initialization file describes the price list itself (name and the author ID)
 		- The ad file describes ads and media related to them (without media option is also available); while the img directory stores images.
-	- Stage 2: Parsing and processing data:==
+	- Stage 2: Parsing and processing data:
 		- At this stage all attributes are validated for compliance with the chosen category
-		- Before sending to the media-service, media files are watermarked and checked whether they comply with platform regulations.^44d052
+		- Before sending to the media-service, media files are watermarked and checked whether they comply with platform regulations.
 	- Stage 3: sending data to the post-service:
 		- The data is sent via the ACP protocol and added to the database.
     
