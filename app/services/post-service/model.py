@@ -24,6 +24,8 @@ class PostDB(Base):
     coordinates: Mapped[str] = mapped_column(
         Geometry(geometry_type='POINT', srid=4326, spatial_index=True)
     )
+    attributes: Mapped[List[str]] = mapped_column(JSON)
+    views: Mapped[int] = mapped_column(Integer, nullable=False)
 
     @property
     def coordinate(self):

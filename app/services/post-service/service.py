@@ -39,6 +39,59 @@ class RabbitMQGateway:
             await self.connection.close()
 
 
+class ViewsManager:
+
+    def __init__(self):
+        self.total_views = {}
+        self.recent_views = {}
+
+    def add(self, post_id, ip):
+        if post_id not in self.recent_views:
+            self.recent_views[post_id] = set()
+            self.total_views[post_id] = 0
+
+        if ip in self.recent_views[post_id]:
+            return
+
+        self.recent_views[post_id].add(ip)
+        self.total_views[post_id] += 1
+
+    async def flush(self, eng, meili: MeiliClient):
+
+        async with eng() as db:
+
+                to_update = []
+
+                if not self.total_views:
+                    return
+
+                t_table = values(
+                    column("p_id", String),
+                    column("i_views", Integer),
+                    name="t_table"
+                ).data([(p_id, i_views) for p_id, i_views in self.total_views.items()])
+
+                res = await db.execute(
+                    update(PostDB)
+                    .where(PostDB.id == t_table.c.p_id)
+                    .values(views=PostDB.views + t_table.c.i_views)
+                    .returning(PostDB.id, PostDB.views)
+                )
+
+                for row in res:
+                    to_update.append(
+                        {"id": row[0], "views": row[1]}
+                    )
+
+                if to_update:
+                    await meili.index("posts").update_documents(to_update)
+                    await db.commit()
+
+                self.recent_views = {}
+                self.total_views = {}
+
+
+
 MEILI_URL = "http://meilisearch:7700"
 MEILI_KEY = os.getenv("MEILISEARCH_KEY")
 MEDIA_KEY = os.getenv("MEDIA_KEY")
@@ -51,6 +104,8 @@ limits = Limits(
 
 @asynccontextmanager
 async def lifespan(cl: FastAPI):
+    views_manager = ViewsManager()
+    app.state.views_manager = views_manager
     client = httpx.AsyncClient(limits=limits, timeout=5)
     cl.state.http_client = client
     factory = get_async_session()
@@ -89,6 +144,8 @@ async def lifespan(cl: FastAPI):
             "author_name",
             "author_image",
             "attributes",
+            "views",
+            "path",
         ],
         ranking_rules=[
             "words",
@@ -145,6 +202,11 @@ async def get_db():
         yield session
 
 
+async def get_views_manager(
+):
+    return app.state.views_manager
+
+
 async def get_meili():
     return app.state.meilisearch
 
@@ -180,20 +242,29 @@ async def delete_user(
         await db.commit()
 
 
-async def listen_deletion():
-    async with app.state.d_queue.iterator() as queue_iter:
-        async for message in queue_iter:
-            async with message.process():
-                data = json.loads(message.body.decode())
-                uid = data["X-User-Id"]
+async def wait_for_batch():
+    while True:
+        await asyncio.sleep(100)
+        views_manager = app.state.views_manager
+        await views_manager.flush(app.state.db, app.state.meilisearch)
 
-                await delete_user(uid, app.state.db)
+
+async def listen_deletion():
+        async with app.state.d_queue.iterator() as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    data = json.loads(message.body.decode())
+                    uid = data["X-User-Id"]
+                    await delete_user(uid, app.state.db)
+
 
 
 async def main():
     await asyncio.gather(
+        wait_for_batch(),
         listen_deletion(),
     )
+
 
 
 @app.post("/api/v1/posts/manip")
@@ -356,7 +427,11 @@ async def manipulate(
                                        coordinates=WKTElement(
                                            f"POINT({post["coordinates"][0]} {post["coordinates"][1]})", srid=4326),
                                        price=int(post["price"]),
-                                       title_image=str(str(post["images_dir"]) + "/" + str(post['title_image']))
+                                       title_image=str(str(post["images_dir"]) + "/" + str(post['title_image'])),
+                                       attributes={(j := k.split(":"))[0]: j[1] for k in
+                                                   post["attributes"].split(",")} if
+                                       post["attributes"] != "" else [],
+                                       views=0,
                                        )
                             db.add(p)
 
@@ -374,6 +449,7 @@ async def manipulate(
                                  "author_image": author_image,
                                  "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")} if
                                  post["attributes"] != "" else None,
+                                 "views": 0,
                                  }
                             ])
 
@@ -404,6 +480,10 @@ async def manipulate(
                                        coordinates=WKTElement(
                                            f"POINT({post["coordinates"][0]} {post["coordinates"][1]})", srid=4326),
                                        price=int(post["price"]),
+                                       attributes={(j := k.split(":"))[0]: j[1] for k in
+                                                   post["attributes"].split(",")} if
+                                       post["attributes"] != "" else [],
+                                       views=0,
                                        )
                             db.add(p)
 
@@ -420,6 +500,7 @@ async def manipulate(
                                  "author_image": author_image,
                                  "attributes": {(j := k.split(":"))[0]: j[1] for k in post["attributes"].split(",")} if
                                  post["attributes"] != "" else None,
+                                 "views": 0,
                                  }
                             ], primary_key="id")
 
@@ -546,18 +627,40 @@ async def search_posts(
         fil: str = None,
         sort: str = None,
         q: str = None,
+        category: str = None,
         meili: MeiliClient = Depends(get_meili),
 ):
+    if category:
+        if (cat_id := PATH_TO_ID.get(category)) is not None:
+            if not fil:
+                fil = f"category_id={cat_id}"
+            else:
+                fil = f"({fil}) AND category_id={cat_id}"
+
     offset = (page - 1) * limit
     sort = [sort] if sort else []
 
-    result = await meili.index("posts").search(q, filter=fil, offset=offset, limit=limit, sort=sort)
-
+    result = await meili.index("posts").search(q, filter=fil, offset=offset, limit=limit, sort=sort,
+                                               facets=["category_id"])
     return {
         "count": result.estimated_total_hits,
+        "categories": {int(CATEGORIES_CACHE[int(i[0])]["id"]): {"id": CATEGORIES_CACHE[int(i[0])]["id"],
+                                                           "name": CATEGORIES_CACHE[int(i[0])]["name"],
+                                                           "slug": CATEGORIES_CACHE[int(i[0])]["slug"],
+                                                           "path": CATEGORIES_CACHE[int(i[0])]["path"],
+                                                           "count": int(i[1])} for i in
+                       dict(dict(result).get("facet_distribution", {}).get("category_id", {})).items()},
         "posts": result.hits if result.hits else [],
     }
 
+def get_path(category_id: int, data):
+    if category_id == 0:
+        return 0
+
+    data.append({"id": CATEGORIES_CACHE[category_id]["id"], "name": CATEGORIES_CACHE[category_id]["name"],
+                 "slug": CATEGORIES_CACHE[category_id]["slug"],})
+
+    return get_path(CATEGORIES_CACHE[category_id]["parent_id"], data)
 
 @app.get("/api/v1/posts/post/{post_id}")
 async def get_post(
@@ -565,15 +668,20 @@ async def get_post(
         post_id: str,
         db: AsyncSession = Depends(get_db),
         client: AsyncClient = Depends(get_httpx),
+        views_manager: ViewsManager = Depends(get_views_manager),
 ):
     res = await db.execute(select(PostDB).where(PostDB.id == str(post_id)))
     post = res.scalar_one_or_none()
+
+    categories = []
 
     if not post:
         raise HTTPException(
             status_code=404,
             detail="No such post!"
         )
+
+    views_manager.add(post_id, str(request.headers.get("X-Real-Ip")))
 
     res1 = await client.get(f"http://favourite-service:5005/api/v1/favourites/is-favourite/{post_id}",
                             headers=request.headers)
@@ -609,12 +717,18 @@ async def get_post(
             detail=res2.json().get("details"),
         )
 
+    get_path(int(post.category_id), categories)
+
     return {
         "post_id": post.id,
+        "views": post.views,
+        "price": post.price,
         "title": post.title,
         "author_id": post.author_id,
         "author": res2.json(),
+        "attributes": post.attributes,
         "description": post.description,
+        "breadcrumbs": categories,
         "images": post.images,
         "directory_name": post.directory_name,
         "posted_at": post.posted_at,
