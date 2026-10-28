@@ -29,7 +29,6 @@ Actual commit history can be seen in the "Activity" section.
 ├── services/               # App services logic
 ```
 
----
 
 ##  2. Architecture & Tech Stack Features
 
@@ -51,8 +50,6 @@ Actual commit history can be seen in the "Activity" section.
 	- Upon any scheduled tasks (email confirmation) auth-service sends a message with the user's X-User-Id to Staging Queue; upon email confirmation, subsequent user registration proceeds; otherwise, the account is deleted after a while.
 - Favourite-service data is updated via caching and subsequent requests to post-service when cache expires.
 
-
----
 
 ## 3. Requests Flow Presentation
 
@@ -123,7 +120,7 @@ Actual commit history can be seen in the "Activity" section.
         
 - ##### **Image Streaming (Overall Architecture):**
   	 A method of transmitting files in batches of fixed size. This approach is memory-efficient as files are processed in streaming mode and never fully loaded into RAM.
----
+
 ## 5. Other Architecture Features
 
 - **Category Storage:** 
