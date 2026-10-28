@@ -148,7 +148,6 @@ Actual commit history can be seen in the "Activity" section.
         
 	- OTHER Group (Group 0 ADDITIONAL) - users who have not completed any registration procedures. They can search ads and add them to favourites (using cookies).
     
----
 
 ## 6. Database ERD
 
