@@ -72,8 +72,10 @@ Actual commit history can be seen in the "Activity" section.
 
 ### 3. External modules architecture
 
-![](doc/images/schema5.png)
-	
+<div style="background-color: #1f2328; padding: 20px; text-align: center; border-radius: 6px;">
+  <img src="doc/images/schema5.png" alt="Схема" style="max-width: 100%;">
+</div>
+
 - External services are separated from the main cluster by the API Gateway routing. They do not require user identification and therefore can work without auth-service.
 - To minimize RAM consumption, a [streaming image processing method](#image-streaming-overall-architecture) is used. This approach is applied in the majority of scenarios ([the exception is primary image processing during ad uploading](#5-other-architecture-features)).
 - Data transfer via the ACP (Admin Communication Protocol) occurs through transmitting a JWT from the admin-service to the auth-service. Admin-type tokens have claims (dest: destination, exp: expires_at, thm:admin). Admin-type tokens are issued only on the admin-service side. The dest claim takes one of nine values depending on service and operation. The first byte is the operation byte and the second byte is the first letter of the target service.
