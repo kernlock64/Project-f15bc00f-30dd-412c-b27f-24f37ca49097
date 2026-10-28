@@ -75,9 +75,7 @@ Actual commit history can be seen in the "Activity" section.
 
 ### 3. External modules architecture
 
-<div style="background-color: #1f2328; padding: 20px; display: inline-block; border-radius: 6px;"
 ![](doc/images/schema5.png)
-</div
 	
 - External services are separated from the main cluster by the API Gateway routing. They do not require user identification and therefore can work without auth-service.
 - To minimize RAM consumption, a [streaming image processing method](#image-streaming-overall-architecture) is used. This approach is applied in the majority of scenarios ([the exception is primary image processing during ad uploading](#5-other-architecture-features)).
